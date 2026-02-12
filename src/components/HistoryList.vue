@@ -111,6 +111,7 @@ const groupedSessions = computed(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 
 .history-title {
@@ -153,6 +154,7 @@ const groupedSessions = computed(() => {
 
 .history-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
 }
