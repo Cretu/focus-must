@@ -8,15 +8,30 @@ export function useSnowEffect() {
     const snowEnabled = ref(false)
     const snowCanvas = ref<HTMLCanvasElement | null>(null)
     let animId: number | null = null
+    let teardownResize: (() => void) | null = null
 
     function start() {
-        const canvas = snowCanvas.value
-        if (!canvas) return
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
+        stop()
 
-        canvas.width = window.innerWidth
-        canvas.height = window.innerHeight
+        const maybeCanvas = snowCanvas.value
+        if (!maybeCanvas) return
+        const canvas: HTMLCanvasElement = maybeCanvas
+
+        const maybeCtx = canvas.getContext('2d')
+        if (!maybeCtx) return
+        const ctx: CanvasRenderingContext2D = maybeCtx
+
+        const resizeCanvas = () => {
+            canvas.width = window.innerWidth
+            canvas.height = window.innerHeight
+        }
+
+        resizeCanvas()
+        window.addEventListener('resize', resizeCanvas)
+        teardownResize = () => {
+            window.removeEventListener('resize', resizeCanvas)
+            teardownResize = null
+        }
 
         const flakes: Snowflake[] = Array.from({ length: 120 }, () => ({
             x: Math.random() * canvas.width,
@@ -28,17 +43,19 @@ export function useSnowEffect() {
         }))
 
         function draw() {
-            ctx!.clearRect(0, 0, canvas!.width, canvas!.height)
+            if (!snowEnabled.value) return
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
             for (const f of flakes) {
-                ctx!.beginPath()
-                ctx!.arc(f.x, f.y, f.r, 0, Math.PI * 2)
-                ctx!.fillStyle = `rgba(255, 255, 255, ${f.opacity})`
-                ctx!.fill()
+                ctx.beginPath()
+                ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2)
+                ctx.fillStyle = `rgba(255, 255, 255, ${f.opacity})`
+                ctx.fill()
                 f.y += f.speed
                 f.x += f.wind + Math.sin(f.y * 0.01) * 0.3
-                if (f.y > canvas!.height) { f.y = -f.r; f.x = Math.random() * canvas!.width }
-                if (f.x > canvas!.width) f.x = 0
-                if (f.x < 0) f.x = canvas!.width
+                if (f.y > canvas.height) { f.y = -f.r; f.x = Math.random() * canvas.width }
+                if (f.x > canvas.width) f.x = 0
+                if (f.x < 0) f.x = canvas.width
             }
             animId = requestAnimationFrame(draw)
         }
@@ -47,6 +64,8 @@ export function useSnowEffect() {
 
     function stop() {
         if (animId) { cancelAnimationFrame(animId); animId = null }
+        if (teardownResize) teardownResize()
+
         const canvas = snowCanvas.value
         if (canvas) {
             const ctx = canvas.getContext('2d')
@@ -55,7 +74,9 @@ export function useSnowEffect() {
     }
 
     watch(snowEnabled, (v) => { v ? start() : stop() })
-    onUnmounted(() => { if (animId) cancelAnimationFrame(animId) })
+    onUnmounted(() => {
+        stop()
+    })
 
     return { snowEnabled, snowCanvas }
 }

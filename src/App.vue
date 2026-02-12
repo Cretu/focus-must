@@ -47,6 +47,7 @@ const appState = ref<AppState>({
 })
 
 const isTaskInputShaking = ref(false)
+const isTaskInputInvalid = ref(false)
 
 // Focus session state
 const elapsedSeconds = ref(0)
@@ -76,6 +77,21 @@ let countdownInterval: ReturnType<typeof setInterval> | null = null
 
 // Derived state
 const isFocusing = computed(() => appState.value.focus_started_at !== null)
+
+const recentTaskSuggestions = computed(() => {
+  const seen = new Set<string>()
+
+  return [...sessionHistory.value]
+    .filter((session) => session.session_type === 'focus' && session.task && session.task.trim().length > 0)
+    .sort((a, b) => b.started_at - a.started_at)
+    .map((session) => session.task!.trim())
+    .filter((task) => {
+      if (seen.has(task)) return false
+      seen.add(task)
+      return true
+    })
+    .slice(0, 6)
+})
 
 const formattedTime = computed(() => {
   const total = elapsedSeconds.value
@@ -108,6 +124,17 @@ watch(() => appState.value.focus_started_at, (newVal) => {
     showEndConfirm.value = false
   }
 })
+
+watch(taskDescription, (value) => {
+  if (value.trim()) {
+    isTaskInputInvalid.value = false
+  }
+})
+
+function applyRecentTask(task: string) {
+  taskDescription.value = task
+  isTaskInputInvalid.value = false
+}
 
 function updateTimer() {
   if (appState.value.focus_started_at) {
@@ -185,13 +212,15 @@ function startReturnCountdown() {
     return
   }
 
+  const returnBundleId = blockedAppState.value.return_to_bundle_id
+
   if (countdownInterval) clearInterval(countdownInterval)
   returnCountdown.value = 3
   countdownInterval = setInterval(() => {
     returnCountdown.value--
     if (returnCountdown.value <= 0) {
       if (countdownInterval) clearInterval(countdownInterval)
-      invoke('switch_to_app', { bundleId: blockedAppState.value!.return_to_bundle_id! })
+      invoke('switch_to_app', { bundleId: returnBundleId })
       blockedAppState.value = null
     }
   }, 1000)
@@ -210,15 +239,20 @@ function toggleApp(bundleId: string) {
 }
 
 async function startFocus() {
-  if (!taskDescription.value.trim()) {
+  const task = taskDescription.value.trim()
+
+  if (!task) {
+    isTaskInputInvalid.value = true
     isTaskInputShaking.value = true
     setTimeout(() => isTaskInputShaking.value = false, 500)
     return
   }
 
+  isTaskInputInvalid.value = false
+
   const whitelist = Array.from(selectedApps.value)
   allowedAppNames.value = runningApps.value.filter(a => whitelist.includes(a.bundle_id))
-  await invoke('unlock_session', { whitelist, task: taskDescription.value })
+  await invoke('unlock_session', { whitelist, task })
 }
 
 function requestEndFocus() {
@@ -236,8 +270,6 @@ async function confirmEndFocus() {
   // Reset form, then restore default whitelist selection
   selectedApps.value = new Set()
   taskDescription.value = ''
-  allowedAppNames.value = []
-  await loadApps()
   allowedAppNames.value = []
   await loadApps()
   initSelectedFromWhitelist()
@@ -259,7 +291,7 @@ async function loadHistory() {
     <canvas ref="snowCanvas" class="snow-canvas" v-show="snowEnabled"></canvas>
 
     <!-- PLANNING MODE -->
-    <div v-if="!isFocusing && currentView === 'planning'" :class="['overlay-card', 'planning-card-layout']" style="position: relative;">
+    <div v-if="!isFocusing && currentView === 'planning'" :class="['overlay-card', 'planning-card-layout', 'relative-position']">
       
       <div class="planning-content">
         <!-- Top-right toggle group -->
@@ -282,17 +314,32 @@ async function loadHistory() {
           <div class="section-label">📝 接下来做什么</div>
           <textarea
             class="task-input"
-            :class="{ 'shake': isTaskInputShaking }"
+            :class="{ 'shake': isTaskInputShaking, 'is-invalid': isTaskInputInvalid, 'task-input-main': true }"
             v-model="taskDescription"
             placeholder="描述你接下来要完成的任务..."
           ></textarea>
+
+          <div v-if="recentTaskSuggestions.length > 0" class="recent-task-block">
+            <div class="recent-task-label">最近任务</div>
+            <div class="recent-task-list">
+              <button
+                v-for="task in recentTaskSuggestions"
+                :key="task"
+                type="button"
+                class="recent-task-chip"
+                @click="applyRecentTask(task)"
+              >
+                {{ task }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- App Whitelist -->
         <div class="section">
-          <div class="section-label" style="display: flex; align-items: center; justify-content: space-between">
-            <span>📱 需要用到的 APP</span>
-            <button class="btn btn-ghost" style="padding: 4px 10px; font-size: 12px" @click="loadApps">
+          <div class="section-header">
+            <span class="section-label">📱 需要用到的 APP</span>
+            <button class="btn btn-ghost btn-refresh" @click="loadApps">
               刷新
             </button>
           </div>
@@ -312,39 +359,38 @@ async function loadHistory() {
 
             <p
               v-if="runningApps.length === 0"
-              style="font-size: 13px; color: var(--text-secondary); padding: 12px; text-align: center; grid-column: 1 / -1;"
+              class="empty-list-message"
             >
               没有检测到其他运行中的应用
             </p>
           </div>
         </div>
 
-        <div style="margin-bottom: 12px;">
+        <div class="break-options-container">
             <!-- On break: show countdown -->
-            <button v-if="isOnBreak" class="btn btn-ghost" style="width: 100%; opacity: 0.7; cursor: default;" disabled>
+            <button v-if="isOnBreak" class="btn btn-ghost btn-full-width btn-disabled" disabled>
               ☕️ 休息中 {{ breakRemaining }}
             </button>
 
             <!-- Not on break: normal toggle -->
             <template v-else>
-              <button v-if="!showFreeActivityOptions" class="btn btn-ghost" style="width: 100%;" @click="showFreeActivityOptions = true">
+              <button v-if="!showFreeActivityOptions" class="btn btn-ghost btn-full-width" @click="showFreeActivityOptions = true">
                 ☕️ 休息一下 (自由活动)
               </button>
 
-              <div v-else class="free-activity-options" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; animation: fadeIn 0.2s ease;">
-                 <button class="btn btn-ghost" style="padding: 8px; font-size: 13px;" @click="startFreeActivity(5)">5分</button>
-                 <button class="btn btn-ghost" style="padding: 8px; font-size: 13px;" @click="startFreeActivity(10)">10分</button>
-                 <button class="btn btn-ghost" style="padding: 8px; font-size: 13px;" @click="startFreeActivity(15)">15分</button>
-                 <button class="btn btn-ghost" style="padding: 8px; font-size: 13px;" @click="startFreeActivity(30)">30分</button>
-                 <button class="btn btn-ghost" style="padding: 8px; font-size: 13px;" @click="startFreeActivity(45)">45分</button>
+              <div v-else class="duration-options-grid">
+                 <button class="btn btn-ghost btn-duration" @click="startFreeActivity(5)">5分</button>
+                 <button class="btn btn-ghost btn-duration" @click="startFreeActivity(10)">10分</button>
+                 <button class="btn btn-ghost btn-duration" @click="startFreeActivity(15)">15分</button>
+                 <button class="btn btn-ghost btn-duration" @click="startFreeActivity(30)">30分</button>
+                 <button class="btn btn-ghost btn-duration" @click="startFreeActivity(45)">45分</button>
                  <input
                    v-model="customMinutes"
                    type="number"
                    min="1"
                    max="480"
                    placeholder="自定义"
-                   class="task-input"
-                   style="min-height: auto; padding: 8px; font-size: 13px; text-align: center;"
+                   class="task-input custom-duration-input"
                    @keyup.enter="customMinutes && startFreeActivity(Number(customMinutes))"
                  />
               </div>
@@ -352,8 +398,7 @@ async function loadHistory() {
         </div>
 
         <button
-          class="btn btn-success"
-          style="width: 100%"
+          class="btn btn-success btn-full-width"
           @click="startFocus"
         >
           🚀 开始专注
@@ -373,9 +418,9 @@ async function loadHistory() {
       <p class="overlay-subtitle">配置默认白名单 APP，每次专注时自动选择</p>
 
       <div class="section">
-        <div class="section-label" style="display: flex; align-items: center; justify-content: space-between">
-          <span>📱 默认允许的 APP</span>
-          <button class="btn btn-ghost" style="padding: 4px 10px; font-size: 12px" @click="openSettings">
+        <div class="section-header">
+          <span class="section-label">📱 默认允许的 APP</span>
+          <button class="btn btn-ghost btn-refresh" @click="openSettings">
             刷新
           </button>
         </div>
@@ -395,31 +440,32 @@ async function loadHistory() {
 
           <p
             v-if="settingsApps.length === 0"
-            style="font-size: 13px; color: var(--text-secondary); padding: 12px; text-align: center; grid-column: 1 / -1;"
+            class="empty-list-message"
           >
             没有检测到其他运行中的应用
           </p>
         </div>
       </div>
 
-      <div style="display: flex; gap: 12px;">
-        <button class="btn btn-ghost" style="flex: 1" @click="currentView = 'planning'">
+      <div class="settings-actions">
+        <button class="btn btn-ghost flex-1" @click="currentView = 'planning'">
           返回
         </button>
-        <button class="btn btn-success" style="flex: 1" @click="saveSettings">
+        <button class="btn btn-success flex-1" @click="saveSettings">
           保存设置
         </button>
       </div>
     </div>
+
 
     <!-- FOCUS MODE (shown when blocking window reappears) -->
     <div v-if="isFocusing" class="overlay-card focus-card">
 
       <!-- Blocked App Alert -->
       <div v-if="blockedAppState" class="blocked-alert">
-        <div class="lock-icon" style="font-size: 48px; margin-bottom: 12px">🚫</div>
-        <h2 class="overlay-title" style="color: var(--accent)">检测到分心</h2>
-        <p class="overlay-subtitle" style="margin-bottom: 16px">
+        <div class="lock-icon blocked-icon-lg">🚫</div>
+        <h2 class="overlay-title text-accent">检测到分心</h2>
+        <p class="overlay-subtitle mb-lg">
           你打开了 <strong>{{ blockedAppState.name }}</strong>
         </p>
 
@@ -429,14 +475,14 @@ async function loadHistory() {
             <div class="countdown-number">{{ returnCountdown }}</div>
             <div class="countdown-label">秒后返回</div>
           </div>
-          <p class="focus-hint" style="margin-top: 16px">
+          <p class="focus-hint mt-lg">
             正在带你回到 <strong>{{ blockedAppState.return_to_name }}</strong> ...
           </p>
         </template>
 
         <!-- No return target: prompt manual switch -->
         <template v-else>
-          <p class="focus-hint" style="margin-top: 16px">
+          <p class="focus-hint mt-lg">
             ⚠️ 请使用 <strong>⌘+Tab</strong> 手动切换回工作 App
           </p>
         </template>

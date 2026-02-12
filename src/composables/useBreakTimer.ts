@@ -1,4 +1,4 @@
-import { ref, computed, watch, type Ref } from 'vue'
+import { ref, computed, watch, onUnmounted, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 
 interface AppState {
@@ -14,6 +14,13 @@ export function useBreakTimer(appState: Ref<AppState>) {
     const customMinutes = ref('')
     const breakRemaining = ref('')
     let breakTimer: ReturnType<typeof setInterval> | null = null
+
+    function stopBreakTimer() {
+        if (breakTimer) {
+            clearInterval(breakTimer)
+            breakTimer = null
+        }
+    }
 
     const isOnBreak = computed(() => {
         return appState.value.free_activity_end_at !== null && appState.value.free_activity_end_at !== undefined
@@ -35,14 +42,19 @@ export function useBreakTimer(appState: Ref<AppState>) {
 
     watch(isOnBreak, (v) => {
         if (v) {
+            stopBreakTimer()
             updateCountdown()
             breakTimer = setInterval(updateCountdown, 1000)
         } else {
-            if (breakTimer) { clearInterval(breakTimer); breakTimer = null }
+            stopBreakTimer()
             breakRemaining.value = ''
             showFreeActivityOptions.value = false
         }
     }, { immediate: true })
+
+    onUnmounted(() => {
+        stopBreakTimer()
+    })
 
     async function startFreeActivity(minutes: number) {
         try {
