@@ -127,11 +127,14 @@ pub fn start_monitoring(app: tauri::AppHandle) {
 fn start_monitoring_macos(app: tauri::AppHandle) {
     use objc2_app_kit::NSWorkspace;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
+    let self_bundle_id = app.config().identifier.clone();
     let mut last_bundle_id = String::new();
     let mut last_valid_bundle_id = String::new();
     let mut last_valid_app_name = String::new();
+    let mut blocking_visible = false;
+    let mut blocking_shown_at: Option<Instant> = None;
 
     loop {
         let workspace = NSWorkspace::sharedWorkspace();
@@ -145,6 +148,10 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
             // Only react when the frontmost app changes
             if !bundle_id.is_empty() && bundle_id != last_bundle_id {
                 last_bundle_id = bundle_id.clone();
+
+                if bundle_id == self_bundle_id {
+                    continue;
+                }
 
                 let current_app_name = front_app
                     .localizedName()
@@ -166,12 +173,14 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                 }
 
                 if is_restricted && !allowed {
-                    // Show blocking window — user switched to a non-whitelisted app
                     if let Some(win) = app.get_webview_window("main") {
                         let _ = win.set_always_on_top(true);
                         let _ = win.show();
                         let _ = win.set_focus();
                     }
+
+                    blocking_visible = true;
+                    blocking_shown_at = Some(Instant::now());
 
                     let _ = app.emit(
                         "blocked-app",
@@ -182,11 +191,21 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                             "return_to_name": if has_focus_session { Some(last_valid_app_name.clone()) } else { None },
                         }),
                     );
-                } else if is_restricted && allowed {
-                    // Hide blocking window — user is on a whitelisted app
+                } else if is_restricted && allowed && blocking_visible {
+                    let can_hide_now = blocking_shown_at
+                        .map(|t| t.elapsed() >= Duration::from_millis(700))
+                        .unwrap_or(true);
+
+                    if !can_hide_now {
+                        continue;
+                    }
+
                     if let Some(win) = app.get_webview_window("main") {
                         let _ = win.hide();
                     }
+
+                    blocking_visible = false;
+                    blocking_shown_at = None;
                 }
             }
         }

@@ -35,7 +35,7 @@ impl Default for AppState {
             default_whitelist: vec![
                 "com.apple.finder".to_string(),
                 "com.apple.systempreferences".to_string(),
-                "com.focus-must.app".to_string(),
+                "com.focus-must".to_string(),
             ],
             session_whitelist: vec![],
             task_description: None,
