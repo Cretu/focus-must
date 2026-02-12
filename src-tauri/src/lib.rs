@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 mod app_monitor;
 mod storage;
@@ -14,6 +14,7 @@ mod storage;
 pub struct AppInfo {
     pub name: String,
     pub bundle_id: String,
+    pub icon_data_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,7 +131,7 @@ fn do_lock_session(app: &tauri::AppHandle) {
                 .unwrap()
                 .as_secs();
             let duration = now.saturating_sub(start);
-            
+
             // Only log significant sessions (> 10s for testing)
             if duration >= 10 {
                 storage::append_session(&storage::SessionRecord {
@@ -166,7 +167,7 @@ fn log_break_session(s: &mut AppState) {
             .unwrap()
             .as_secs();
         let duration = now.saturating_sub(start);
-        
+
         if duration >= 10 {
             storage::append_session(&storage::SessionRecord {
                 session_type: "break".to_string(),
@@ -209,7 +210,7 @@ fn unlock_session(
         let mut s = state.lock().unwrap();
         // Log previous break if exists
         log_break_session(&mut s);
-        
+
         s.session_whitelist = whitelist;
         s.task_description = Some(task);
         s.focus_started_at = Some(
@@ -236,7 +237,6 @@ fn unlock_session(
 fn lock_session(app: tauri::AppHandle) {
     do_lock_session(&app);
 }
-
 
 #[tauri::command]
 fn update_settings(
@@ -297,8 +297,6 @@ fn start_free_activity(
     }
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Application entry point
 // ---------------------------------------------------------------------------
@@ -336,9 +334,9 @@ pub fn run() {
             // --- Hide from Dock at runtime ---
             #[cfg(target_os = "macos")]
             {
+                use objc2::MainThreadMarker;
                 use objc2_app_kit::NSApplication;
                 use objc2_app_kit::NSApplicationActivationPolicy;
-                use objc2::MainThreadMarker;
                 // Safety: setup runs on the main thread
                 let mtm = unsafe { MainThreadMarker::new_unchecked() };
                 let ns_app = NSApplication::sharedApplication(mtm);
@@ -346,14 +344,17 @@ pub fn run() {
             }
 
             // --- System Tray ---
-            let show_i =
-                MenuItem::with_id(app, "show", "📋 显示计划窗口", true, None::<&str>)?;
+            let show_i = MenuItem::with_id(app, "show", "📋 显示计划窗口", true, None::<&str>)?;
             let lock_i =
                 MenuItem::with_id(app, "lock", "🔒 结束专注 (未开始)", false, None::<&str>)?;
-            let end_break_i =
-                MenuItem::with_id(app, "end_break", "☕️ 结束休息 (未开始)", false, None::<&str>)?;
-            let settings_i =
-                MenuItem::with_id(app, "settings", "⚙️ 设置", true, None::<&str>)?;
+            let end_break_i = MenuItem::with_id(
+                app,
+                "end_break",
+                "☕️ 结束休息 (未开始)",
+                false,
+                None::<&str>,
+            )?;
+            let settings_i = MenuItem::with_id(app, "settings", "⚙️ 设置", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
             // Store clones for dynamic updates

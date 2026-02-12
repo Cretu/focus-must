@@ -9,6 +9,7 @@ import HistoryList, { type SessionRecord } from './components/HistoryList.vue'
 interface AppInfo {
   name: string
   bundle_id: string
+  icon_data_url?: string | null
 }
 
 interface BlockedAppEvent {
@@ -352,7 +353,13 @@ async function loadHistory() {
               @click="toggleApp(app.bundle_id)"
             >
               <div class="app-item-icon-placeholder">
-                {{ app.name ? app.name[0].toUpperCase() : '?' }}
+                <img
+                  v-if="app.icon_data_url"
+                  :src="app.icon_data_url"
+                  :alt="app.name"
+                  class="app-item-icon-image"
+                />
+                <span v-else>{{ app.name ? app.name[0].toUpperCase() : '?' }}</span>
               </div>
               <div class="app-item-name">{{ app.name }}</div>
             </div>
@@ -433,7 +440,13 @@ async function loadHistory() {
             @click="toggleSettingsApp(app.bundle_id)"
           >
             <div class="app-item-icon-placeholder">
-              {{ app.name ? app.name[0].toUpperCase() : '?' }}
+              <img
+                v-if="app.icon_data_url"
+                :src="app.icon_data_url"
+                :alt="app.name"
+                class="app-item-icon-image"
+              />
+              <span v-else>{{ app.name ? app.name[0].toUpperCase() : '?' }}</span>
             </div>
             <div class="app-item-name">{{ app.name }}</div>
           </div>

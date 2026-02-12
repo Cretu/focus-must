@@ -1,6 +1,61 @@
 use crate::{AppInfo, AppState};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
+
+#[cfg(target_os = "macos")]
+static ICON_CACHE: std::sync::OnceLock<Mutex<HashMap<String, Option<String>>>> =
+    std::sync::OnceLock::new();
+
+#[cfg(target_os = "macos")]
+fn icon_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
+    ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(target_os = "macos")]
+fn ns_data_to_vec(data: &objc2_foundation::NSData) -> Vec<u8> {
+    use std::ffi::c_void;
+    use std::ptr::NonNull;
+
+    let length = data.length() as usize;
+    if length == 0 {
+        return Vec::new();
+    }
+
+    let mut bytes = vec![0_u8; length];
+    unsafe {
+        data.getBytes_length(
+            NonNull::new_unchecked(bytes.as_mut_ptr() as *mut c_void),
+            length,
+        );
+    }
+    bytes
+}
+
+#[cfg(target_os = "macos")]
+fn app_icon_data_url(app: &objc2_app_kit::NSRunningApplication) -> Option<String> {
+    use base64::Engine as _;
+    use objc2::runtime::AnyObject;
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSBitmapImageRepPropertyKey};
+    use objc2_foundation::NSDictionary;
+
+    let icon = app.icon()?;
+    let tiff_data = icon.TIFFRepresentation()?;
+
+    let bitmap = NSBitmapImageRep::imageRepWithData(&tiff_data)?;
+    let properties = NSDictionary::<NSBitmapImageRepPropertyKey, AnyObject>::new();
+    let png_data = unsafe {
+        bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &properties)?
+    };
+
+    let bytes = ns_data_to_vec(&png_data);
+    if bytes.is_empty() {
+        return None;
+    }
+
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Some(format!("data:image/png;base64,{encoded}"))
+}
 
 /// Get list of currently running user-facing applications
 pub fn get_running_apps() -> Vec<AppInfo> {
@@ -25,9 +80,7 @@ fn get_running_apps_macos() -> Vec<AppInfo> {
 
     for app in running_apps.iter() {
         // Only include regular (user-facing) applications
-        if app.activationPolicy()
-            == objc2_app_kit::NSApplicationActivationPolicy::Regular
-        {
+        if app.activationPolicy() == objc2_app_kit::NSApplicationActivationPolicy::Regular {
             let name = app
                 .localizedName()
                 .map(|n| n.to_string())
@@ -38,7 +91,22 @@ fn get_running_apps_macos() -> Vec<AppInfo> {
                 .unwrap_or_default();
 
             if !bundle_id.is_empty() {
-                apps.push(AppInfo { name, bundle_id });
+                let icon_data_url = {
+                    let mut cache = icon_cache().lock().unwrap();
+                    if let Some(cached) = cache.get(&bundle_id) {
+                        cached.clone()
+                    } else {
+                        let generated = app_icon_data_url(&app);
+                        cache.insert(bundle_id.clone(), generated.clone());
+                        generated
+                    }
+                };
+
+                apps.push(AppInfo {
+                    name,
+                    bundle_id,
+                    icon_data_url,
+                });
             }
         }
     }
@@ -77,7 +145,7 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
             // Only react when the frontmost app changes
             if !bundle_id.is_empty() && bundle_id != last_bundle_id {
                 last_bundle_id = bundle_id.clone();
-                
+
                 let current_app_name = front_app
                     .localizedName()
                     .map(|n| n.to_string())
@@ -90,7 +158,7 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                 let is_free_activity = s.free_activity_end_at.is_some();
 
                 drop(s);
-                
+
                 if allowed && !is_free_activity {
                     last_valid_bundle_id = bundle_id.clone();
                     last_valid_app_name = current_app_name.clone();
