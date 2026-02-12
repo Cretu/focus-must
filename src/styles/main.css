@@ -67,6 +67,34 @@ body {
   animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.startup-card {
+  width: min(420px, 86vw);
+  min-width: 320px;
+  padding: 38px 32px;
+}
+
+.startup-spinner {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--success);
+  box-shadow: 0 0 14px var(--success-glow);
+  animation: spin 0.9s linear infinite;
+}
+
+.startup-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .shake {
   animation: shake 0.5s cubic-bezier(.36, .07, .19, .97) both;
 }

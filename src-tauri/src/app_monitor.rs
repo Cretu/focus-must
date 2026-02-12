@@ -156,10 +156,11 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                 let allowed = s.is_app_allowed(&bundle_id);
                 let is_restricted = s.is_restricted;
                 let is_free_activity = s.free_activity_end_at.is_some();
+                let has_focus_session = s.focus_started_at.is_some();
 
                 drop(s);
 
-                if allowed && !is_free_activity {
+                if allowed && has_focus_session && !is_free_activity {
                     last_valid_bundle_id = bundle_id.clone();
                     last_valid_app_name = current_app_name.clone();
                 }
@@ -177,8 +178,8 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                         serde_json::json!({
                             "name": current_app_name,
                             "bundle_id": bundle_id,
-                            "return_to_bundle_id": last_valid_bundle_id,
-                            "return_to_name": last_valid_app_name,
+                            "return_to_bundle_id": if has_focus_session { Some(last_valid_bundle_id.clone()) } else { None },
+                            "return_to_name": if has_focus_session { Some(last_valid_app_name.clone()) } else { None },
                         }),
                     );
                 } else if is_restricted && allowed {

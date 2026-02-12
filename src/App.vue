@@ -49,6 +49,7 @@ const appState = ref<AppState>({
 
 const isTaskInputShaking = ref(false)
 const isTaskInputInvalid = ref(false)
+const isBooting = ref(true)
 
 // Focus session state
 const elapsedSeconds = ref(0)
@@ -147,30 +148,43 @@ function updateTimer() {
 
 // --- Lifecycle ---
 onMounted(async () => {
-  await loadState()
-  await loadApps()
+  const startupStartedAt = Date.now()
+  const minimumStartupAnimationMs = 550
 
-  unlistenState = await listen<AppState>('state-changed', (event) => {
-    appState.value = event.payload
+  try {
+    await loadState()
+    await loadApps()
+
+    unlistenState = await listen<AppState>('state-changed', (event) => {
+      appState.value = event.payload
+      loadHistory()
+    })
+
+    unlistenBlocked = await listen<BlockedAppEvent>('blocked-app', (event) => {
+      blockedAppState.value = event.payload
+      startReturnCountdown()
+    })
+
+    unlistenShowView = await listen<string>('show-view', (event) => {
+      if (event.payload === 'settings') {
+        openSettings()
+      } else {
+        currentView.value = 'planning'
+      }
+    })
+
+    // Auto-select default whitelist apps
+    initSelectedFromWhitelist()
     loadHistory()
-  })
-
-  unlistenBlocked = await listen<BlockedAppEvent>('blocked-app', (event) => {
-    blockedAppState.value = event.payload
-    startReturnCountdown()
-  })
-
-  unlistenShowView = await listen<string>('show-view', (event) => {
-    if (event.payload === 'settings') {
-      openSettings()
-    } else {
-      currentView.value = 'planning'
+  } catch (e) {
+    console.error('Failed during startup:', e)
+  } finally {
+    const elapsed = Date.now() - startupStartedAt
+    if (elapsed < minimumStartupAnimationMs) {
+      await new Promise((resolve) => setTimeout(resolve, minimumStartupAnimationMs - elapsed))
     }
-  })
-
-  // Auto-select default whitelist apps
-  initSelectedFromWhitelist()
-  loadHistory()
+    isBooting.value = false
+  }
 })
 
 onUnmounted(() => {
@@ -208,6 +222,11 @@ async function saveSettings() {
 }
 
 function startReturnCountdown() {
+  if (countdownInterval) {
+    clearInterval(countdownInterval)
+    countdownInterval = null
+  }
+
   if (!blockedAppState.value?.return_to_bundle_id) {
     returnCountdown.value = -1
     return
@@ -215,12 +234,12 @@ function startReturnCountdown() {
 
   const returnBundleId = blockedAppState.value.return_to_bundle_id
 
-  if (countdownInterval) clearInterval(countdownInterval)
   returnCountdown.value = 3
   countdownInterval = setInterval(() => {
     returnCountdown.value--
     if (returnCountdown.value <= 0) {
       if (countdownInterval) clearInterval(countdownInterval)
+      countdownInterval = null
       invoke('switch_to_app', { bundleId: returnBundleId })
       blockedAppState.value = null
     }
@@ -291,8 +310,14 @@ async function loadHistory() {
     <!-- Snow Canvas -->
     <canvas ref="snowCanvas" class="snow-canvas" v-show="snowEnabled"></canvas>
 
+    <div v-if="isBooting" class="overlay-card startup-card">
+      <div class="startup-spinner" aria-hidden="true"></div>
+      <h1 class="overlay-title">Focus Must</h1>
+      <p class="startup-subtitle">正在加载应用列表...</p>
+    </div>
+
     <!-- PLANNING MODE -->
-    <div v-if="!isFocusing && currentView === 'planning'" :class="['overlay-card', 'planning-card-layout', 'relative-position']">
+    <div v-else-if="!isFocusing && currentView === 'planning'" :class="['overlay-card', 'planning-card-layout', 'relative-position']">
       
       <div class="planning-content">
         <!-- Top-right toggle group -->
@@ -419,7 +444,7 @@ async function loadHistory() {
     </div>
 
     <!-- SETTINGS MODE -->
-    <div v-if="!isFocusing && currentView === 'settings'" class="overlay-card">
+    <div v-else-if="!isFocusing && currentView === 'settings'" class="overlay-card">
       <div class="lock-icon">⚙️</div>
       <h1 class="overlay-title">设置</h1>
       <p class="overlay-subtitle">配置默认白名单 APP，每次专注时自动选择</p>
@@ -472,7 +497,7 @@ async function loadHistory() {
 
 
     <!-- FOCUS MODE (shown when blocking window reappears) -->
-    <div v-if="isFocusing" class="overlay-card focus-card">
+    <div v-else-if="isFocusing" class="overlay-card focus-card">
 
       <!-- Blocked App Alert -->
       <div v-if="blockedAppState" class="blocked-alert">
