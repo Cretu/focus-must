@@ -58,10 +58,10 @@ fn app_icon_data_url(app: &objc2_app_kit::NSRunningApplication) -> Option<String
 }
 
 /// Get list of currently running user-facing applications
-pub fn get_running_apps() -> Vec<AppInfo> {
+pub fn get_running_apps(include_icons: bool) -> Vec<AppInfo> {
     #[cfg(target_os = "macos")]
     {
-        get_running_apps_macos()
+        get_running_apps_macos(include_icons)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -70,7 +70,7 @@ pub fn get_running_apps() -> Vec<AppInfo> {
 }
 
 #[cfg(target_os = "macos")]
-fn get_running_apps_macos() -> Vec<AppInfo> {
+fn get_running_apps_macos(include_icons: bool) -> Vec<AppInfo> {
     use objc2_app_kit::NSWorkspace;
 
     let mut apps = Vec::new();
@@ -91,15 +91,22 @@ fn get_running_apps_macos() -> Vec<AppInfo> {
                 .unwrap_or_default();
 
             if !bundle_id.is_empty() {
-                let icon_data_url = {
-                    let mut cache = icon_cache().lock().unwrap();
-                    if let Some(cached) = cache.get(&bundle_id) {
-                        cached.clone()
+                let icon_data_url = if include_icons {
+                    let cached = {
+                        let cache = icon_cache().lock().unwrap();
+                        cache.get(&bundle_id).cloned()
+                    };
+
+                    if let Some(cached) = cached {
+                        cached
                     } else {
                         let generated = app_icon_data_url(&app);
+                        let mut cache = icon_cache().lock().unwrap();
                         cache.insert(bundle_id.clone(), generated.clone());
                         generated
                     }
+                } else {
+                    None
                 };
 
                 apps.push(AppInfo {
@@ -112,6 +119,56 @@ fn get_running_apps_macos() -> Vec<AppInfo> {
     }
 
     apps
+}
+
+pub fn get_app_icon(bundle_id: &str) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        get_app_icon_macos(bundle_id)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = bundle_id;
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_app_icon_macos(bundle_id: &str) -> Option<String> {
+    use objc2_app_kit::NSWorkspace;
+
+    let cached = {
+        let cache = icon_cache().lock().unwrap();
+        cache.get(bundle_id).cloned()
+    };
+    if let Some(cached) = cached {
+        return cached;
+    }
+
+    let workspace = NSWorkspace::sharedWorkspace();
+    let running_apps = workspace.runningApplications();
+
+    let generated = running_apps.iter().find_map(|app| {
+        if app.activationPolicy() != objc2_app_kit::NSApplicationActivationPolicy::Regular {
+            return None;
+        }
+
+        let app_bundle_id = app
+            .bundleIdentifier()
+            .map(|id| id.to_string())
+            .unwrap_or_default();
+
+        if app_bundle_id == bundle_id {
+            return app_icon_data_url(&app);
+        }
+
+        None
+    });
+
+    let mut cache = icon_cache().lock().unwrap();
+    cache.insert(bundle_id.to_string(), generated.clone());
+
+    generated
 }
 
 /// Start monitoring the frontmost application.

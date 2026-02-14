@@ -49,6 +49,24 @@ function appNameClass(name: string): string[] {
     return ["app-item-name"];
 }
 
+const appIconCache = new Map<string, string | null>();
+
+async function fetchAppIcon(bundleId: string): Promise<string | null> {
+    if (appIconCache.has(bundleId)) {
+        return appIconCache.get(bundleId) ?? null;
+    }
+
+    try {
+        const icon = await invoke<string | null>("get_app_icon", { bundleId });
+        const value = icon ?? null;
+        appIconCache.set(bundleId, value);
+        return value;
+    } catch {
+        appIconCache.set(bundleId, null);
+        return null;
+    }
+}
+
 // --- State ---
 const currentView = ref<"planning" | "settings">("planning");
 const taskDescription = ref("");
@@ -186,14 +204,44 @@ function updateTimer() {
     }
 }
 
+async function hydrateIcons(target: "running" | "settings") {
+    const list = target === "running" ? runningApps.value : settingsApps.value;
+
+    for (const app of list) {
+        if (app.icon_data_url) {
+            continue;
+        }
+
+        const icon = await fetchAppIcon(app.bundle_id);
+        if (!icon) {
+            continue;
+        }
+
+        if (target === "running") {
+            const matched = runningApps.value.find(
+                (item) => item.bundle_id === app.bundle_id,
+            );
+            if (matched) {
+                matched.icon_data_url = icon;
+            }
+        } else {
+            const matched = settingsApps.value.find(
+                (item) => item.bundle_id === app.bundle_id,
+            );
+            if (matched) {
+                matched.icon_data_url = icon;
+            }
+        }
+    }
+}
+
 // --- Lifecycle ---
 onMounted(async () => {
     const startupStartedAt = Date.now();
-    const minimumStartupAnimationMs = 550;
+    const minimumStartupAnimationMs = 220;
 
     try {
         await loadState();
-        await loadApps();
 
         unlistenState = await listen<AppState>("state-changed", (event) => {
             appState.value = event.payload;
@@ -219,6 +267,7 @@ onMounted(async () => {
         // Auto-select default whitelist apps
         initSelectedFromWhitelist();
         loadHistory();
+        void loadApps(false);
     } catch (e) {
         console.error("Failed during startup:", e);
     } finally {
@@ -250,7 +299,10 @@ function initSelectedFromWhitelist() {
 
 async function openSettings() {
     currentView.value = "settings";
-    settingsApps.value = await invoke<AppInfo[]>("get_running_apps");
+    settingsApps.value = await invoke<AppInfo[]>("get_running_apps", {
+        includeIcons: false,
+    });
+    void hydrateIcons("settings");
     settingsWhitelist.value = new Set(appState.value.default_whitelist);
 }
 
@@ -295,8 +347,14 @@ async function loadState() {
     appState.value = await invoke<AppState>("get_state");
 }
 
-async function loadApps() {
-    runningApps.value = await invoke<AppInfo[]>("get_running_apps");
+async function loadApps(includeIcons = false) {
+    runningApps.value = await invoke<AppInfo[]>("get_running_apps", {
+        includeIcons,
+    });
+
+    if (!includeIcons) {
+        void hydrateIcons("running");
+    }
 }
 
 function toggleApp(bundleId: string) {
@@ -471,7 +529,7 @@ async function loadHistory() {
                         <span class="section-label">📱 需要用到的 APP</span>
                         <button
                             class="btn btn-ghost btn-refresh"
-                            @click="loadApps"
+                            @click="loadApps()"
                         >
                             刷新
                         </button>

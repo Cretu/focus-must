@@ -188,8 +188,13 @@ fn log_break_session(s: &mut AppState) {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn get_running_apps() -> Vec<AppInfo> {
-    app_monitor::get_running_apps()
+fn get_running_apps(include_icons: Option<bool>) -> Vec<AppInfo> {
+    app_monitor::get_running_apps(include_icons.unwrap_or(false))
+}
+
+#[tauri::command]
+fn get_app_icon(bundle_id: String) -> Option<String> {
+    app_monitor::get_app_icon(&bundle_id)
 }
 
 #[tauri::command]
@@ -322,6 +327,7 @@ pub fn run() {
         }))
         .invoke_handler(tauri::generate_handler![
             get_running_apps,
+            get_app_icon,
             get_state,
             unlock_session,
             lock_session,

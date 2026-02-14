@@ -383,8 +383,8 @@ body {
 }
 
 .app-item-icon-placeholder {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     background: var(--bg-secondary);
     border-radius: 6px;
     display: flex;
