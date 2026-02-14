@@ -2,6 +2,11 @@
 import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import {
+    isEnabled as isAutostartEnabled,
+    enable as enableAutostart,
+    disable as disableAutostart,
+} from "@tauri-apps/plugin-autostart";
 import { useSnowEffect } from "./composables/useSnowEffect";
 import { useBreakTimer } from "./composables/useBreakTimer";
 import HistoryList, { type SessionRecord } from "./components/HistoryList.vue";
@@ -122,6 +127,8 @@ const returnCountdown = ref(3);
 // Settings state
 const settingsApps = ref<AppInfo[]>([]);
 const settingsWhitelist = ref<Set<string>>(new Set());
+const autostartEnabled = ref(false);
+const autostartLoading = ref(false);
 
 // History state
 const sessionHistory = ref<SessionRecord[]>([]);
@@ -361,11 +368,21 @@ function initSelectedFromWhitelist() {
 
 async function openSettings() {
     currentView.value = "settings";
-    settingsApps.value = await invoke<AppInfo[]>("get_running_apps", {
-        includeIcons: false,
-    });
-    void hydrateIcons("settings");
-    settingsWhitelist.value = new Set(appState.value.default_whitelist);
+    autostartLoading.value = true;
+    try {
+        settingsApps.value = await invoke<AppInfo[]>("get_running_apps", {
+            includeIcons: false,
+        });
+        void hydrateIcons("settings");
+        settingsWhitelist.value = new Set(appState.value.default_whitelist);
+
+        autostartEnabled.value = await isAutostartEnabled();
+    } catch (e) {
+        console.error("Failed to open settings:", e);
+        autostartEnabled.value = false;
+    } finally {
+        autostartLoading.value = false;
+    }
 }
 
 async function openAnalytics() {
@@ -389,6 +406,20 @@ async function saveSettings() {
     const whitelist = Array.from(settingsWhitelist.value);
     await invoke("update_settings", { defaultWhitelist: whitelist });
     appState.value.default_whitelist = whitelist;
+
+    autostartLoading.value = true;
+    try {
+        if (autostartEnabled.value) {
+            await enableAutostart();
+        } else {
+            await disableAutostart();
+        }
+    } catch (e) {
+        console.error("Failed to update autostart:", e);
+    } finally {
+        autostartLoading.value = false;
+    }
+
     currentView.value = "planning";
     initSelectedFromWhitelist();
 }
@@ -788,6 +819,17 @@ async function loadHistory() {
                 </div>
             </div>
 
+            <div class="section">
+                <div class="section-label">🚀 开机启动</div>
+                <label class="autostart-row">
+                    <USwitch
+                        v-model="autostartEnabled"
+                        :disabled="autostartLoading"
+                    />
+                    <span>开机自动启动 Focus Must</span>
+                </label>
+            </div>
+
             <div class="settings-actions">
                 <button
                     class="btn btn-ghost flex-1"
@@ -1043,6 +1085,15 @@ async function loadHistory() {
     font-size: 12px;
     color: var(--text-secondary);
     font-weight: 500;
+}
+
+.autostart-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
 }
 
 /* Confirm overlay */
