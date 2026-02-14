@@ -38,6 +38,17 @@ function toggleSetItem(set: Set<string>, item: string): Set<string> {
     return s;
 }
 
+function appNameClass(name: string): string[] {
+    const trimmed = name.trim();
+    if (trimmed.length >= 18) {
+        return ["app-item-name", "tiny"];
+    }
+    if (trimmed.length >= 12) {
+        return ["app-item-name", "small"];
+    }
+    return ["app-item-name"];
+}
+
 // --- State ---
 const currentView = ref<"planning" | "settings">("planning");
 const taskDescription = ref("");
@@ -475,7 +486,10 @@ async function loadHistory() {
                             }"
                             @click="toggleApp(app.bundle_id)"
                         >
-                            <div class="app-item-icon-placeholder">
+                            <div
+                                class="app-item-icon-placeholder"
+                                :class="{ 'has-image': !!app.icon_data_url }"
+                            >
                                 <img
                                     v-if="app.icon_data_url"
                                     :src="app.icon_data_url"
@@ -486,7 +500,7 @@ async function loadHistory() {
                                     app.name ? app.name[0].toUpperCase() : "?"
                                 }}</span>
                             </div>
-                            <div class="app-item-name">{{ app.name }}</div>
+                            <div :class="appNameClass(app.name)">{{ app.name }}</div>
                         </div>
 
                         <p
@@ -498,79 +512,81 @@ async function loadHistory() {
                     </div>
                 </div>
 
-                <div class="break-options-container">
-                    <!-- On break: show countdown -->
-                    <button
-                        v-if="isOnBreak"
-                        class="btn btn-ghost btn-full-width btn-disabled"
-                        disabled
-                    >
-                        ☕️ 休息中 {{ breakRemaining }}
-                    </button>
-
-                    <!-- Not on break: normal toggle -->
-                    <template v-else>
+                <div class="planning-actions">
+                    <div class="break-options-container">
+                        <!-- On break: show countdown -->
                         <button
-                            v-if="!showFreeActivityOptions"
-                            class="btn btn-ghost btn-full-width"
-                            @click="showFreeActivityOptions = true"
+                            v-if="isOnBreak"
+                            class="btn btn-ghost btn-full-width btn-disabled"
+                            disabled
                         >
-                            ☕️ 休息一下 (自由活动)
+                            ☕️ 休息中 {{ breakRemaining }}
                         </button>
 
-                        <div v-else class="duration-options-grid">
+                        <!-- Not on break: normal toggle -->
+                        <template v-else>
                             <button
-                                class="btn btn-ghost btn-duration"
-                                @click="startFreeActivity(5)"
+                                v-if="!showFreeActivityOptions"
+                                class="btn btn-ghost btn-full-width"
+                                @click="showFreeActivityOptions = true"
                             >
-                                5分
+                                ☕️ 休息一下 (自由活动)
                             </button>
-                            <button
-                                class="btn btn-ghost btn-duration"
-                                @click="startFreeActivity(10)"
-                            >
-                                10分
-                            </button>
-                            <button
-                                class="btn btn-ghost btn-duration"
-                                @click="startFreeActivity(15)"
-                            >
-                                15分
-                            </button>
-                            <button
-                                class="btn btn-ghost btn-duration"
-                                @click="startFreeActivity(30)"
-                            >
-                                30分
-                            </button>
-                            <button
-                                class="btn btn-ghost btn-duration"
-                                @click="startFreeActivity(45)"
-                            >
-                                45分
-                            </button>
-                            <input
-                                v-model="customMinutes"
-                                type="number"
-                                min="1"
-                                max="480"
-                                placeholder="自定义"
-                                class="task-input custom-duration-input"
-                                @keyup.enter="
-                                    customMinutes &&
-                                    startFreeActivity(Number(customMinutes))
-                                "
-                            />
-                        </div>
-                    </template>
-                </div>
 
-                <button
-                    class="btn btn-success btn-full-width"
-                    @click="startFocus"
-                >
-                    🚀 开始专注
-                </button>
+                            <div v-else class="duration-options-grid">
+                                <button
+                                    class="btn btn-ghost btn-duration"
+                                    @click="startFreeActivity(5)"
+                                >
+                                    5分
+                                </button>
+                                <button
+                                    class="btn btn-ghost btn-duration"
+                                    @click="startFreeActivity(10)"
+                                >
+                                    10分
+                                </button>
+                                <button
+                                    class="btn btn-ghost btn-duration"
+                                    @click="startFreeActivity(15)"
+                                >
+                                    15分
+                                </button>
+                                <button
+                                    class="btn btn-ghost btn-duration"
+                                    @click="startFreeActivity(30)"
+                                >
+                                    30分
+                                </button>
+                                <button
+                                    class="btn btn-ghost btn-duration"
+                                    @click="startFreeActivity(45)"
+                                >
+                                    45分
+                                </button>
+                                <input
+                                    v-model="customMinutes"
+                                    type="number"
+                                    min="1"
+                                    max="480"
+                                    placeholder="自定义"
+                                    class="task-input custom-duration-input"
+                                    @keyup.enter="
+                                        customMinutes &&
+                                        startFreeActivity(Number(customMinutes))
+                                    "
+                                />
+                            </div>
+                        </template>
+                    </div>
+
+                    <button
+                        class="btn btn-success btn-full-width"
+                        @click="startFocus"
+                    >
+                        🚀 开始专注
+                    </button>
+                </div>
             </div>
 
             <div class="history-side-panel">
@@ -609,7 +625,10 @@ async function loadHistory() {
                         }"
                         @click="toggleSettingsApp(app.bundle_id)"
                     >
-                        <div class="app-item-icon-placeholder">
+                        <div
+                            class="app-item-icon-placeholder"
+                            :class="{ 'has-image': !!app.icon_data_url }"
+                        >
                             <img
                                 v-if="app.icon_data_url"
                                 :src="app.icon_data_url"
@@ -620,7 +639,7 @@ async function loadHistory() {
                                 app.name ? app.name[0].toUpperCase() : "?"
                             }}</span>
                         </div>
-                        <div class="app-item-name">{{ app.name }}</div>
+                        <div :class="appNameClass(app.name)">{{ app.name }}</div>
                     </div>
 
                     <p
