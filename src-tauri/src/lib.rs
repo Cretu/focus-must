@@ -269,6 +269,11 @@ fn get_history() -> Vec<storage::SessionRecord> {
     storage::load_sessions()
 }
 
+#[tauri::command]
+fn get_analytics() -> storage::AnalyticsData {
+    storage::load_analytics()
+}
+
 /// Start a free-activity (break) session
 #[tauri::command]
 fn start_free_activity(
@@ -335,6 +340,7 @@ pub fn run() {
             start_free_activity,
             update_settings,
             get_history,
+            get_analytics,
         ])
         .setup(|app| {
             // --- Hide from Dock at runtime ---

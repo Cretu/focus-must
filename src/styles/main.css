@@ -736,6 +736,123 @@ body {
     width: 100%;
 }
 
+.analytics-card {
+    width: min(980px, 78vw);
+}
+
+.analytics-loading {
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+.analytics-content {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin-bottom: 16px;
+}
+
+.analytics-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.analytics-summary-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    text-align: left;
+}
+
+.analytics-summary-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.analytics-summary-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.analytics-section {
+    text-align: left;
+}
+
+.trend-bars {
+    margin-top: 8px;
+    height: 140px;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.trend-bar-item {
+    width: 28px;
+    flex-shrink: 0;
+}
+
+.trend-bar-track {
+    height: 110px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    display: flex;
+    align-items: flex-end;
+    padding: 2px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.trend-bar-fill {
+    width: 100%;
+    border-radius: 6px;
+    background: linear-gradient(180deg, rgba(0, 212, 170, 0.95), rgba(0, 212, 170, 0.4));
+}
+
+.trend-bar-label {
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.hour-distribution-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+    margin-top: 8px;
+}
+
+.hour-distribution-item {
+    display: grid;
+    grid-template-columns: 52px 1fr 56px;
+    gap: 8px;
+    align-items: center;
+}
+
+.hour-label,
+.hour-value {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.hour-track {
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.hour-fill {
+    height: 100%;
+    background: linear-gradient(90deg, rgba(0, 212, 170, 0.95), rgba(0, 212, 170, 0.45));
+    border-radius: inherit;
+}
+
 .flex-1 {
     flex: 1;
 }

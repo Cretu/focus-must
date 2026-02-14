@@ -27,6 +27,32 @@ interface AppState {
     free_activity_end_at: number | null;
 }
 
+interface AnalyticsSummary {
+    total_focus_secs: number;
+    total_break_secs: number;
+    total_sessions: number;
+    focus_sessions: number;
+    break_sessions: number;
+}
+
+interface DailyTrendPoint {
+    day: string;
+    focus_secs: number;
+    break_secs: number;
+}
+
+interface FocusHourBucket {
+    hour: number;
+    focus_secs: number;
+    sessions: number;
+}
+
+interface AnalyticsData {
+    summary: AnalyticsSummary;
+    daily_trend: DailyTrendPoint[];
+    focus_hour_distribution: FocusHourBucket[];
+}
+
 // --- Helpers ---
 function toggleSetItem(set: Set<string>, item: string): Set<string> {
     const s = new Set(set);
@@ -68,7 +94,7 @@ async function fetchAppIcon(bundleId: string): Promise<string | null> {
 }
 
 // --- State ---
-const currentView = ref<"planning" | "settings">("planning");
+const currentView = ref<"planning" | "settings" | "analytics">("planning");
 const taskDescription = ref("");
 const runningApps = ref<AppInfo[]>([]);
 const selectedApps = ref<Set<string>>(new Set());
@@ -99,6 +125,8 @@ const settingsWhitelist = ref<Set<string>>(new Set());
 
 // History state
 const sessionHistory = ref<SessionRecord[]>([]);
+const analyticsData = ref<AnalyticsData | null>(null);
+const analyticsLoading = ref(false);
 
 // Composables
 const { snowEnabled, snowCanvas } = useSnowEffect();
@@ -155,6 +183,40 @@ const formattedTime = computed(() => {
     }
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 });
+
+const maxDailyFocusSecs = computed(() => {
+    const values = analyticsData.value?.daily_trend.map((point) => point.focus_secs) ?? [];
+    return Math.max(1, ...values);
+});
+
+const maxHourFocusSecs = computed(() => {
+    const values =
+        analyticsData.value?.focus_hour_distribution.map((point) => point.focus_secs) ?? [];
+    return Math.max(1, ...values);
+});
+
+function formatDurationLabel(totalSeconds: number): string {
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    if (hours > 0) {
+        return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+}
+
+function formatDurationCompact(totalSeconds: number): string {
+    const mins = Math.floor(totalSeconds / 60);
+    if (mins >= 60) {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return `${h}h${m > 0 ? `${m}m` : ""}`;
+    }
+    return `${mins}m`;
+}
+
+function formatHourLabel(hour: number): string {
+    return `${String(hour).padStart(2, "0")}:00`;
+}
 
 // Watch focus state to start/stop timer
 watch(
@@ -306,6 +368,19 @@ async function openSettings() {
     settingsWhitelist.value = new Set(appState.value.default_whitelist);
 }
 
+async function openAnalytics() {
+    currentView.value = "analytics";
+    analyticsLoading.value = true;
+    try {
+        analyticsData.value = await invoke<AnalyticsData>("get_analytics");
+    } catch (e) {
+        console.error("Failed to load analytics:", e);
+        analyticsData.value = null;
+    } finally {
+        analyticsLoading.value = false;
+    }
+}
+
 function toggleSettingsApp(bundleId: string) {
     settingsWhitelist.value = toggleSetItem(settingsWhitelist.value, bundleId);
 }
@@ -451,6 +526,10 @@ async function loadHistory() {
                     <label class="snow-toggle" @click.prevent="openSettings">
                         <span class="snow-toggle-icon">⚙️</span>
                         <span class="snow-toggle-label">设置</span>
+                    </label>
+                    <label class="snow-toggle" @click.prevent="openAnalytics">
+                        <span class="snow-toggle-icon">📊</span>
+                        <span class="snow-toggle-label">统计</span>
                     </label>
                 </div>
                 <div class="lock-icon">🔒</div>
@@ -718,6 +797,89 @@ async function loadHistory() {
                 </button>
                 <button class="btn btn-success flex-1" @click="saveSettings">
                     保存设置
+                </button>
+            </div>
+        </div>
+
+        <div
+            v-else-if="!isFocusing && currentView === 'analytics'"
+            class="overlay-card analytics-card"
+        >
+            <div class="lock-icon">📊</div>
+            <h1 class="overlay-title">统计分析</h1>
+            <p class="overlay-subtitle">专注与休息数据总览</p>
+
+            <div v-if="analyticsLoading" class="analytics-loading">正在计算统计数据...</div>
+
+            <div v-else-if="analyticsData" class="analytics-content">
+                <div class="analytics-summary-grid">
+                    <div class="analytics-summary-card">
+                        <div class="analytics-summary-label">总专注时长</div>
+                        <div class="analytics-summary-value">
+                            {{ formatDurationLabel(analyticsData.summary.total_focus_secs) }}
+                        </div>
+                    </div>
+                    <div class="analytics-summary-card">
+                        <div class="analytics-summary-label">总休息时长</div>
+                        <div class="analytics-summary-value">
+                            {{ formatDurationLabel(analyticsData.summary.total_break_secs) }}
+                        </div>
+                    </div>
+                    <div class="analytics-summary-card">
+                        <div class="analytics-summary-label">总会话数</div>
+                        <div class="analytics-summary-value">
+                            {{ analyticsData.summary.total_sessions }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analytics-section">
+                    <div class="section-label">📈 日趋势（近 30 天）</div>
+                    <div class="trend-bars">
+                        <div
+                            v-for="point in analyticsData.daily_trend"
+                            :key="point.day"
+                            class="trend-bar-item"
+                        >
+                            <div class="trend-bar-track">
+                                <div
+                                    class="trend-bar-fill"
+                                    :style="{
+                                        height: `${Math.max(4, (point.focus_secs / maxDailyFocusSecs) * 100)}%`,
+                                    }"
+                                ></div>
+                            </div>
+                            <div class="trend-bar-label">{{ point.day.slice(5) }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analytics-section">
+                    <div class="section-label">🕒 专注时段分布</div>
+                    <div class="hour-distribution-list">
+                        <div
+                            v-for="bucket in analyticsData.focus_hour_distribution"
+                            :key="bucket.hour"
+                            class="hour-distribution-item"
+                        >
+                            <div class="hour-label">{{ formatHourLabel(bucket.hour) }}</div>
+                            <div class="hour-track">
+                                <div
+                                    class="hour-fill"
+                                    :style="{
+                                        width: `${(bucket.focus_secs / maxHourFocusSecs) * 100}%`,
+                                    }"
+                                ></div>
+                            </div>
+                            <div class="hour-value">{{ formatDurationCompact(bucket.focus_secs) }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-actions">
+                <button class="btn btn-ghost flex-1" @click="currentView = 'planning'">
+                    返回
                 </button>
             </div>
         </div>
