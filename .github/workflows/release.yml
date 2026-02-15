@@ -28,6 +28,48 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Sync app version from tag
+        env:
+          APP_TAG: ${{ github.ref_name }}
+        run: |
+          APP_VERSION="${APP_TAG#v}"
+
+          if [ -z "$APP_VERSION" ] || [ "$APP_VERSION" = "$APP_TAG" ]; then
+            echo "Invalid release tag: $APP_TAG (expected format: vX.Y.Z)"
+            exit 1
+          fi
+
+          APP_VERSION="$APP_VERSION" python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["APP_VERSION"]
+          root = Path(".")
+
+          for rel_path in ("package.json", "src-tauri/tauri.conf.json"):
+              path = root / rel_path
+              data = json.loads(path.read_text())
+              data["version"] = version
+              path.write_text(json.dumps(data, indent=2) + "\n")
+
+          cargo_path = root / "src-tauri/Cargo.toml"
+          cargo_text = cargo_path.read_text()
+          updated, count = re.subn(
+              r'(?m)^version\s*=\s*"[^"]+"',
+              f'version = "{version}"',
+              cargo_text,
+              count=1,
+          )
+
+          if count != 1:
+              raise SystemExit("Failed to update src-tauri/Cargo.toml version")
+
+          cargo_path.write_text(updated)
+          print(f"Synced release version to: {version}")
+          PY
+
       - name: Build Tauri bundles
         run: npm run tauri build
 
