@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{IconMenuItem, Menu, MenuItem, NativeIcon},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
@@ -63,44 +63,44 @@ impl AppState {
 // Tray Menu State — helpers to reduce repetition
 // ---------------------------------------------------------------------------
 struct TrayMenuState {
-    lock_item: Option<MenuItem<tauri::Wry>>,
-    end_break_item: Option<MenuItem<tauri::Wry>>,
+    lock_item: Option<IconMenuItem<tauri::Wry>>,
+    end_break_item: Option<IconMenuItem<tauri::Wry>>,
 }
 
 impl TrayMenuState {
     fn set_focus_active(&self) {
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(true);
-            let _ = item.set_text("🔒 结束专注");
+            let _ = item.set_text("结束专注");
         }
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text("☕️ 结束休息 (未开始)");
+            let _ = item.set_text("结束休息 (未开始)");
         }
     }
 
     fn set_focus_inactive(&self) {
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text("🔒 结束专注 (未开始)");
+            let _ = item.set_text("结束专注 (未开始)");
         }
     }
 
     fn set_break_active(&self) {
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(true);
-            let _ = item.set_text("☕️ 结束休息");
+            let _ = item.set_text("结束休息");
         }
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text("🔒 结束专注 (未开始)");
+            let _ = item.set_text("结束专注 (未开始)");
         }
     }
 
     fn set_break_inactive(&self) {
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text("☕️ 结束休息 (未开始)");
+            let _ = item.set_text("结束休息 (未开始)");
         }
     }
 }
@@ -270,6 +270,11 @@ fn get_history() -> Vec<storage::SessionRecord> {
 }
 
 #[tauri::command]
+fn get_history_page(offset: Option<u64>, limit: Option<u64>) -> storage::HistoryPage {
+    storage::load_sessions_page(offset.unwrap_or(0), limit.unwrap_or(100))
+}
+
+#[tauri::command]
 fn get_analytics() -> storage::AnalyticsData {
     storage::load_analytics()
 }
@@ -303,7 +308,7 @@ fn start_free_activity(
     }
 
     if let Some(tray) = app.tray_by_id("focus-tray") {
-        let _ = tray.set_title(Some(&format!("☕️ 休息中 {:02}:00", duration_minutes)));
+        let _ = tray.set_title(Some(&format!("休息中 {:02}:00", duration_minutes)));
     }
 }
 
@@ -340,6 +345,7 @@ pub fn run() {
             start_free_activity,
             update_settings,
             get_history,
+            get_history_page,
             get_analytics,
         ])
         .setup(|app| {
@@ -356,17 +362,38 @@ pub fn run() {
             }
 
             // --- System Tray ---
-            let show_i = MenuItem::with_id(app, "show", "📋 显示计划窗口", true, None::<&str>)?;
-            let lock_i =
-                MenuItem::with_id(app, "lock", "🔒 结束专注 (未开始)", false, None::<&str>)?;
-            let end_break_i = MenuItem::with_id(
+            let show_i = IconMenuItem::with_id_and_native_icon(
                 app,
-                "end_break",
-                "☕️ 结束休息 (未开始)",
-                false,
+                "show",
+                "显示计划窗口",
+                true,
+                Some(NativeIcon::ListView),
                 None::<&str>,
             )?;
-            let settings_i = MenuItem::with_id(app, "settings", "⚙️ 设置", true, None::<&str>)?;
+            let lock_i = IconMenuItem::with_id_and_native_icon(
+                app,
+                "lock",
+                "结束专注 (未开始)",
+                false,
+                Some(NativeIcon::LockLocked),
+                None::<&str>,
+            )?;
+            let end_break_i = IconMenuItem::with_id_and_native_icon(
+                app,
+                "end_break",
+                "结束休息 (未开始)",
+                false,
+                Some(NativeIcon::StatusPartiallyAvailable),
+                None::<&str>,
+            )?;
+            let settings_i = IconMenuItem::with_id_and_native_icon(
+                app,
+                "settings",
+                "设置",
+                true,
+                Some(NativeIcon::PreferencesGeneral),
+                None::<&str>,
+            )?;
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
             // Store clones for dynamic updates
@@ -385,7 +412,7 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
                 .menu(&menu)
-                .title("🔒 计划中...")
+                .title("计划中")
                 .tooltip("Focus Must")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
@@ -414,7 +441,7 @@ pub fn run() {
                         }
                         show_main_window(app, false);
                         if let Some(tray) = app.tray_by_id("focus-tray") {
-                            let _ = tray.set_title(Some("🔒 计划中..."));
+                            let _ = tray.set_title(Some("计划中"));
                         }
                     }
                     "quit" => {
@@ -500,9 +527,9 @@ fn tray_title_updater(app: tauri::AppHandle) {
             let secs = elapsed % 60;
 
             if hours > 0 {
-                format!("🎯 专注中 {:02}:{:02}:{:02}", hours, mins, secs)
+                format!("专注中 {:02}:{:02}:{:02}", hours, mins, secs)
             } else {
-                format!("🎯 专注中 {:02}:{:02}", mins, secs)
+                format!("专注中 {:02}:{:02}", mins, secs)
             }
         } else if let Some(end_ts) = free_end_at {
             let now = SystemTime::now()
@@ -524,15 +551,15 @@ fn tray_title_updater(app: tauri::AppHandle) {
                     let _ = app.emit("state-changed", s.clone());
                 }
                 show_main_window(&app, false);
-                "🔒 计划中...".to_string()
+                "计划中".to_string()
             } else {
                 let remaining = end_ts - now;
                 let mins = remaining / 60;
                 let secs = remaining % 60;
-                format!("☕️ 休息中 {:02}:{:02}", mins, secs)
+                format!("休息中 {:02}:{:02}", mins, secs)
             }
         } else {
-            "🔒 计划中...".to_string()
+            "计划中".to_string()
         };
 
         if let Some(tray) = app.tray_by_id("focus-tray") {

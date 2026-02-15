@@ -233,7 +233,6 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                     if let Some(win) = app.get_webview_window("main") {
                         let _ = win.set_always_on_top(true);
                         let _ = win.show();
-                        let _ = win.set_focus();
                     }
 
                     blocking_visible = true;
@@ -260,6 +259,8 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                     if let Some(win) = app.get_webview_window("main") {
                         let _ = win.hide();
                     }
+
+                    let _ = app.emit("blocked-app-cleared", serde_json::Value::Null);
 
                     blocking_visible = false;
                     blocking_shown_at = None;

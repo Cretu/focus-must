@@ -39,6 +39,12 @@ pub struct SessionRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct HistoryPage {
+    pub items: Vec<SessionRecord>,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AnalyticsSummary {
     pub total_focus_secs: u64,
     pub total_break_secs: u64,
@@ -285,6 +291,81 @@ pub fn load_sessions() -> Vec<SessionRecord> {
     };
 
     rows.filter_map(Result::ok).collect()
+}
+
+pub fn load_sessions_page(offset: u64, limit: u64) -> HistoryPage {
+    let limit = limit.clamp(1, 500) as usize;
+    let offset = offset.min(i64::MAX as u64) as i64;
+
+    let Some(conn) = open_db() else {
+        let sessions = load_sessions_from_jsonl();
+        let start = offset as usize;
+        if start >= sessions.len() {
+            return HistoryPage::default();
+        }
+
+        let end = (start + limit).min(sessions.len());
+        return HistoryPage {
+            items: sessions[start..end].to_vec(),
+            has_more: end < sessions.len(),
+        };
+    };
+
+    let mut stmt = match conn.prepare(
+        "
+        SELECT
+            session_type,
+            started_at,
+            ended_at,
+            duration_secs,
+            task,
+            whitelist_json
+        FROM sessions
+        ORDER BY started_at DESC
+        LIMIT ?1 OFFSET ?2
+        ",
+    ) {
+        Ok(stmt) => stmt,
+        Err(_) => {
+            let sessions = load_sessions_from_jsonl();
+            let start = offset as usize;
+            if start >= sessions.len() {
+                return HistoryPage::default();
+            }
+
+            let end = (start + limit).min(sessions.len());
+            return HistoryPage {
+                items: sessions[start..end].to_vec(),
+                has_more: end < sessions.len(),
+            };
+        }
+    };
+
+    let rows = match stmt.query_map(params![(limit + 1) as i64, offset], |row| {
+        let whitelist_json: String = row.get(5)?;
+        let whitelist =
+            serde_json::from_str::<Vec<String>>(&whitelist_json).unwrap_or_else(|_| vec![]);
+
+        Ok(SessionRecord {
+            session_type: row.get(0)?,
+            started_at: row.get::<_, i64>(1)? as u64,
+            ended_at: row.get::<_, i64>(2)? as u64,
+            duration_secs: row.get::<_, i64>(3)? as u64,
+            task: row.get(4)?,
+            whitelist,
+        })
+    }) {
+        Ok(rows) => rows,
+        Err(_) => return HistoryPage::default(),
+    };
+
+    let mut items: Vec<SessionRecord> = rows.filter_map(Result::ok).collect();
+    let has_more = items.len() > limit;
+    if has_more {
+        items.truncate(limit);
+    }
+
+    HistoryPage { items, has_more }
 }
 
 pub fn load_analytics() -> AnalyticsData {

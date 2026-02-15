@@ -58,6 +58,13 @@ interface AnalyticsData {
     focus_hour_distribution: FocusHourBucket[];
 }
 
+interface HistoryPage {
+    items: SessionRecord[];
+    has_more: boolean;
+}
+
+const HISTORY_PAGE_SIZE = 100;
+
 // --- Helpers ---
 function toggleSetItem(set: Set<string>, item: string): Set<string> {
     const s = new Set(set);
@@ -114,7 +121,6 @@ const appState = ref<AppState>({
 const isTaskInputShaking = ref(false);
 const isTaskInputInvalid = ref(false);
 const isBooting = ref(true);
-const showMoreRecentTasks = ref(false);
 
 // Focus session state
 const elapsedSeconds = ref(0);
@@ -132,8 +138,12 @@ const autostartLoading = ref(false);
 
 // History state
 const sessionHistory = ref<SessionRecord[]>([]);
+const historyOffset = ref(0);
+const historyHasMore = ref(true);
+const historyLoading = ref(false);
 const analyticsData = ref<AnalyticsData | null>(null);
 const analyticsLoading = ref(false);
+const hoveredTrendIndex = ref<number | null>(null);
 
 // Composables
 const { snowEnabled, snowCanvas } = useSnowEffect();
@@ -148,6 +158,7 @@ const {
 // Event listeners
 let unlistenState: UnlistenFn | null = null;
 let unlistenBlocked: UnlistenFn | null = null;
+let unlistenBlockedCleared: UnlistenFn | null = null;
 let unlistenShowView: UnlistenFn | null = null;
 let timerInterval: ReturnType<typeof setInterval> | null = null;
 let countdownInterval: ReturnType<typeof setInterval> | null = null;
@@ -179,6 +190,12 @@ const visibleRecentTasks = computed(() =>
     recentTaskSuggestions.value.slice(0, 3),
 );
 const hiddenRecentTasks = computed(() => recentTaskSuggestions.value.slice(3));
+const recentTaskMenuItems = computed(() =>
+    hiddenRecentTasks.value.map((task) => ({
+        label: task,
+        onSelect: () => applyRecentTask(task),
+    })),
+);
 
 const formattedTime = computed(() => {
     const total = elapsedSeconds.value;
@@ -202,6 +219,154 @@ const maxHourFocusSecs = computed(() => {
     return Math.max(1, ...values);
 });
 
+const DAILY_TREND_PLOT_TOP = 8;
+const DAILY_TREND_PLOT_BOTTOM = 92;
+
+type DailyTrendChartPoint = {
+    x: number;
+    y: number;
+    day: string;
+    focusSecs: number;
+};
+
+const dailyTrendChartPoints = computed(() => {
+    const trend = analyticsData.value?.daily_trend ?? [];
+    if (trend.length === 0) {
+        return [] as DailyTrendChartPoint[];
+    }
+
+    return trend.map((point, index) => {
+        const x = trend.length === 1 ? 50 : (index / (trend.length - 1)) * 100;
+        const normalized = Math.max(
+            0,
+            Math.min(1, point.focus_secs / maxDailyFocusSecs.value),
+        );
+        const y =
+            DAILY_TREND_PLOT_TOP +
+            (1 - normalized) * (DAILY_TREND_PLOT_BOTTOM - DAILY_TREND_PLOT_TOP);
+
+        return {
+            x,
+            y,
+            day: point.day,
+            focusSecs: point.focus_secs,
+        };
+    });
+});
+
+function buildSmoothPath(points: DailyTrendChartPoint[]): string {
+    if (points.length === 0) {
+        return "";
+    }
+
+    if (points.length === 1) {
+        return `M ${points[0].x} ${points[0].y}`;
+    }
+
+    let path = `M ${points[0].x} ${points[0].y}`;
+
+    for (let index = 0; index < points.length - 1; index++) {
+        const p0 = points[index - 1] ?? points[index];
+        const p1 = points[index];
+        const p2 = points[index + 1];
+        const p3 = points[index + 2] ?? p2;
+
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+        path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+    }
+
+    return path;
+}
+
+const dailyTrendSmoothPath = computed(() =>
+    buildSmoothPath(dailyTrendChartPoints.value),
+);
+
+const dailyTrendAreaPath = computed(() => {
+    const points = dailyTrendChartPoints.value;
+    if (points.length === 0) {
+        return "";
+    }
+
+    const smoothLinePath = buildSmoothPath(points);
+    const first = points[0];
+    const last = points[points.length - 1];
+
+    return `${smoothLinePath} L ${last.x} ${DAILY_TREND_PLOT_BOTTOM} L ${first.x} ${DAILY_TREND_PLOT_BOTTOM} Z`;
+});
+
+const activeTrendIndex = computed(() => {
+    const points = dailyTrendChartPoints.value;
+    if (points.length === 0) {
+        return null;
+    }
+
+    if (hoveredTrendIndex.value === null) {
+        return points.length - 1;
+    }
+
+    return Math.max(0, Math.min(points.length - 1, hoveredTrendIndex.value));
+});
+
+const activeTrendPoint = computed(() => {
+    const index = activeTrendIndex.value;
+    if (index === null) {
+        return null;
+    }
+
+    return dailyTrendChartPoints.value[index] ?? null;
+});
+
+const dailyTrendLabelPoints = computed(() => {
+    const points = dailyTrendChartPoints.value;
+    if (points.length <= 6) {
+        return points;
+    }
+
+    const step = Math.ceil(points.length / 6);
+    return points.filter(
+        (_point, index) => index % step === 0 || index === points.length - 1,
+    );
+});
+
+function updateTrendHover(event: MouseEvent) {
+    const points = dailyTrendChartPoints.value;
+    const target = event.currentTarget as SVGSVGElement | null;
+
+    if (!target || points.length === 0) {
+        return;
+    }
+
+    const rect = target.getBoundingClientRect();
+    if (rect.width <= 0) {
+        return;
+    }
+
+    const ratio = (event.clientX - rect.left) / rect.width;
+    const normalizedX = Math.max(0, Math.min(100, ratio * 100));
+
+    let nearest = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    points.forEach((point, index) => {
+        const distance = Math.abs(point.x - normalizedX);
+        if (distance < nearestDistance) {
+            nearest = index;
+            nearestDistance = distance;
+        }
+    });
+
+    hoveredTrendIndex.value = nearest;
+}
+
+function clearTrendHover() {
+    hoveredTrendIndex.value = null;
+}
+
 function formatDurationLabel(totalSeconds: number): string {
     const hours = Math.floor(totalSeconds / 3600);
     const mins = Math.floor((totalSeconds % 3600) / 60);
@@ -222,7 +387,18 @@ function formatDurationCompact(totalSeconds: number): string {
 }
 
 function formatHourLabel(hour: number): string {
-    return `${String(hour).padStart(2, "0")}:00`;
+    const startHour = ((hour % 24) + 24) % 24;
+    const endHour = (startHour + 1) % 24;
+    return `${String(startHour).padStart(2, "0")}:00~${String(endHour).padStart(2, "0")}:00`;
+}
+
+function clearBlockedState() {
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    blockedAppState.value = null;
+    returnCountdown.value = 3;
 }
 
 // Watch focus state to start/stop timer
@@ -250,6 +426,7 @@ watch(
             timerInterval = null;
             elapsedSeconds.value = 0;
             showEndConfirm.value = false;
+            clearBlockedState();
         }
     },
 );
@@ -314,7 +491,7 @@ onMounted(async () => {
 
         unlistenState = await listen<AppState>("state-changed", (event) => {
             appState.value = event.payload;
-            loadHistory();
+            void loadHistory(true);
         });
 
         unlistenBlocked = await listen<BlockedAppEvent>(
@@ -324,6 +501,10 @@ onMounted(async () => {
                 startReturnCountdown();
             },
         );
+
+        unlistenBlockedCleared = await listen("blocked-app-cleared", () => {
+            clearBlockedState();
+        });
 
         unlistenShowView = await listen<string>("show-view", (event) => {
             if (event.payload === "settings") {
@@ -335,7 +516,7 @@ onMounted(async () => {
 
         // Auto-select default whitelist apps
         initSelectedFromWhitelist();
-        loadHistory();
+        void loadHistory(true);
         void loadApps(false);
     } catch (e) {
         console.error("Failed during startup:", e);
@@ -353,6 +534,7 @@ onMounted(async () => {
 onUnmounted(() => {
     if (unlistenState) unlistenState();
     if (unlistenBlocked) unlistenBlocked();
+    if (unlistenBlockedCleared) unlistenBlockedCleared();
     if (unlistenShowView) unlistenShowView();
     if (timerInterval) clearInterval(timerInterval);
     if (countdownInterval) clearInterval(countdownInterval);
@@ -444,7 +626,6 @@ function startReturnCountdown() {
             if (countdownInterval) clearInterval(countdownInterval);
             countdownInterval = null;
             invoke("switch_to_app", { bundleId: returnBundleId });
-            blockedAppState.value = null;
         }
     }, 1000);
 }
@@ -504,241 +685,238 @@ async function confirmEndFocus() {
     allowedAppNames.value = [];
     await loadApps();
     initSelectedFromWhitelist();
-    loadHistory();
+    await loadHistory(true);
 }
 
-async function loadHistory() {
+async function loadHistory(reset = false) {
+    if (historyLoading.value) {
+        return;
+    }
+
+    if (reset) {
+        historyOffset.value = 0;
+        historyHasMore.value = true;
+        sessionHistory.value = [];
+    }
+
+    if (!historyHasMore.value) {
+        return;
+    }
+
+    historyLoading.value = true;
+
     try {
-        sessionHistory.value = await invoke<SessionRecord[]>("get_history");
+        const page = await invoke<HistoryPage>("get_history_page", {
+            offset: historyOffset.value,
+            limit: HISTORY_PAGE_SIZE,
+        });
+
+        sessionHistory.value = [...sessionHistory.value, ...page.items];
+        historyOffset.value += page.items.length;
+        historyHasMore.value = page.has_more;
     } catch (e) {
         console.error("Failed to load history:", e);
+    } finally {
+        historyLoading.value = false;
     }
+}
+
+function loadMoreHistory() {
+    void loadHistory(false);
 }
 </script>
 
 <template>
     <div class="overlay-container">
-        <!-- Snow Canvas -->
-        <canvas
-            ref="snowCanvas"
-            class="snow-canvas"
-            v-show="snowEnabled"
-        ></canvas>
+        <canvas ref="snowCanvas" class="snow-canvas" v-show="snowEnabled"></canvas>
 
-        <div v-if="isBooting" class="overlay-card startup-card">
-            <div class="startup-spinner" aria-hidden="true"></div>
-            <h1 class="overlay-title">Focus Must</h1>
-            <p class="startup-subtitle">正在加载应用列表...</p>
-        </div>
+        <UCard v-if="isBooting" class="w-[min(420px,86vw)]">
+            <div class="space-y-3 text-center">
+                <div class="startup-spinner" aria-hidden="true"></div>
+                <h1 class="text-xl font-semibold">Focus Must</h1>
+                <UProgress :model-value="null" size="sm" />
+                <p class="text-sm text-muted">正在加载应用列表...</p>
+            </div>
+        </UCard>
 
-        <!-- PLANNING MODE -->
-        <div
+        <UCard
             v-else-if="!isFocusing && currentView === 'planning'"
-            :class="[
-                'overlay-card',
-                'planning-card-layout',
-                'relative-position',
-            ]"
+            class="flex h-[70vh] w-[min(1040px,92vw)] flex-col overflow-hidden"
+            :ui="{ body: 'flex-1 min-h-0 overflow-hidden' }"
         >
-            <div class="planning-content">
-                <!-- Top-right toggle group -->
-                <div class="settings-toggle-group">
-                    <label
-                        class="snow-toggle"
-                        @click.prevent="snowEnabled = !snowEnabled"
-                    >
-                        <span class="snow-toggle-icon">{{
-                            snowEnabled ? "❄️" : "🌙"
-                        }}</span>
-                        <span class="snow-toggle-label">{{
-                            snowEnabled ? "下雪中" : "下雪"
-                        }}</span>
-                    </label>
-                    <label class="snow-toggle" @click.prevent="openSettings">
-                        <span class="snow-toggle-icon">⚙️</span>
-                        <span class="snow-toggle-label">设置</span>
-                    </label>
-                    <label class="snow-toggle" @click.prevent="openAnalytics">
-                        <span class="snow-toggle-icon">📊</span>
-                        <span class="snow-toggle-label">统计</span>
-                    </label>
+            <template #header>
+                <div class="flex items-start justify-between gap-3">
+                    <div class="flex min-w-0 items-center gap-2">
+                        <UIcon name="i-lucide-lock" class="text-3xl text-primary" />
+                        <h1 class="text-xl font-semibold leading-tight">Focus Must：先想清楚要做什么，再开始</h1>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <UButton
+                            color="neutral"
+                            variant="outline"
+                            size="sm"
+                            @click="snowEnabled = !snowEnabled"
+                            :leading-icon="snowEnabled ? 'i-lucide-snowflake' : 'i-lucide-moon-star'"
+                        >
+                            {{ snowEnabled ? "下雪中" : "下雪" }}
+                        </UButton>
+                        <UButton
+                            color="neutral"
+                            variant="outline"
+                            size="sm"
+                            leading-icon="i-lucide-settings-2"
+                            @click="openSettings"
+                        >
+                            设置
+                        </UButton>
+                        <UButton
+                            color="neutral"
+                            variant="outline"
+                            size="sm"
+                            leading-icon="i-lucide-chart-column"
+                            @click="openAnalytics"
+                        >
+                            统计
+                        </UButton>
+                        <UColorModeSelect size="sm" class="min-w-28" />
+                    </div>
                 </div>
-                <div class="lock-icon">🔒</div>
-                <h1 class="overlay-title">
-                    Focus Must：先想清楚要做什么，再开始
-                </h1>
+            </template>
 
-                <!-- Task Input -->
-                <div class="section">
-                    <div class="section-label">📝 接下来做什么</div>
-                    <textarea
-                        class="task-input"
-                        :class="{
-                            shake: isTaskInputShaking,
-                            'is-invalid': isTaskInputInvalid,
-                            'task-input-main': true,
-                        }"
-                        v-model="taskDescription"
-                        placeholder="描述你接下来要完成的任务..."
-                    ></textarea>
+            <div class="grid h-full min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                <div class="min-h-0 flex flex-col">
+                    <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+                        <UCard variant="soft">
+                            <template #header>
+                                <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                                    <UIcon name="i-lucide-clipboard-list" class="text-base" />
+                                    <span>接下来做什么</span>
+                                </div>
+                            </template>
+                            <div class="space-y-3">
+                                <UTextarea
+                                    v-model="taskDescription"
+                                    :rows="3"
+                                    autoresize
+                                    :color="isTaskInputInvalid ? 'error' : 'success'"
+                                    :highlight="isTaskInputInvalid"
+                                    placeholder="描述你接下来要完成的任务..."
+                                    @focus="isTaskInputInvalid = false"
+                                    :class="['w-full', isTaskInputShaking ? 'shake' : '']"
+                                />
 
-                    <div
-                        v-if="recentTaskSuggestions.length > 0"
-                        class="recent-task-block"
-                    >
-                        <div class="recent-task-label">最近任务</div>
-                        <div class="recent-task-list">
-                            <button
-                                v-for="task in visibleRecentTasks"
-                                :key="task"
-                                type="button"
-                                class="recent-task-chip"
-                                @click="applyRecentTask(task)"
-                            >
-                                {{ task }}
-                            </button>
-                            <div
-                                v-if="hiddenRecentTasks.length > 0"
-                                class="recent-task-more-wrapper"
-                            >
-                                <button
-                                    type="button"
-                                    class="recent-task-chip recent-task-more-btn"
-                                    @click="
-                                        showMoreRecentTasks =
-                                            !showMoreRecentTasks
-                                    "
-                                >
-                                    更多 ({{ hiddenRecentTasks.length }})
-                                </button>
-                                <div
-                                    v-if="showMoreRecentTasks"
-                                    class="recent-task-dropdown"
-                                >
-                                    <button
-                                        v-for="task in hiddenRecentTasks"
-                                        :key="task"
-                                        type="button"
-                                        class="recent-task-dropdown-item"
-                                        @click="
-                                            applyRecentTask(task);
-                                            showMoreRecentTasks = false;
-                                        "
-                                    >
-                                        {{ task }}
-                                    </button>
+                                <div v-if="recentTaskSuggestions.length > 0" class="flex items-center gap-2">
+                                    <div class="shrink-0 text-xs text-muted">最近任务</div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <UButton
+                                            v-for="task in visibleRecentTasks"
+                                            :key="task"
+                                            color="neutral"
+                                            variant="outline"
+                                            size="xs"
+                                            class="max-w-full truncate"
+                                            @click="applyRecentTask(task)"
+                                        >
+                                            {{ task }}
+                                        </UButton>
+                                        <UDropdownMenu
+                                            v-if="hiddenRecentTasks.length > 0"
+                                            :items="recentTaskMenuItems"
+                                        >
+                                            <UButton color="neutral" variant="soft" size="xs">
+                                                更多 ({{ hiddenRecentTasks.length }})
+                                            </UButton>
+                                        </UDropdownMenu>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
+                        </UCard>
 
-                <!-- App Whitelist -->
-                <div class="section">
-                    <div class="section-header">
-                        <span class="section-label">📱 需要用到的 APP</span>
-                        <button
-                            class="btn btn-ghost btn-refresh"
-                            @click="loadApps()"
-                        >
-                            刷新
-                        </button>
-                    </div>
-                    <div class="app-list">
-                        <div
-                            v-for="app in runningApps"
-                            :key="app.bundle_id"
-                            class="app-item"
-                            :class="{
-                                selected: selectedApps.has(app.bundle_id),
-                            }"
-                            @click="toggleApp(app.bundle_id)"
-                        >
-                            <div
-                                class="app-item-icon-placeholder"
-                                :class="{ 'has-image': !!app.icon_data_url }"
-                            >
-                                <img
-                                    v-if="app.icon_data_url"
-                                    :src="app.icon_data_url"
-                                    :alt="app.name"
-                                    class="app-item-icon-image"
+                        <UCard variant="soft">
+                            <template #header>
+                                <div class="flex items-center justify-between gap-2">
+                                    <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                                        <UIcon name="i-lucide-layout-grid" class="text-base" />
+                                        <span>需要用到的 APP</span>
+                                    </div>
+                                    <UButton color="neutral" variant="outline" size="xs" @click="loadApps()">
+                                        刷新
+                                    </UButton>
+                                </div>
+                            </template>
+
+                            <div class="app-grid">
+                                <UCard
+                                    v-for="app in runningApps"
+                                    :key="app.bundle_id"
+                                    variant="outline"
+                                    :class="['app-item', { selected: selectedApps.has(app.bundle_id) }]"
+                                    @click="toggleApp(app.bundle_id)"
+                                >
+                                    <div class="app-item-icon-placeholder" :class="{ 'has-image': !!app.icon_data_url }">
+                                        <img
+                                            v-if="app.icon_data_url"
+                                            :src="app.icon_data_url"
+                                            :alt="app.name"
+                                            class="app-item-icon-image"
+                                        />
+                                        <span v-else>{{ app.name ? app.name[0].toUpperCase() : "?" }}</span>
+                                    </div>
+                                    <div :class="appNameClass(app.name)">{{ app.name }}</div>
+                                </UCard>
+
+                                <UAlert
+                                    v-if="runningApps.length === 0"
+                                    color="neutral"
+                                    variant="soft"
+                                    title="没有检测到其他运行中的应用"
+                                    class="col-span-full"
                                 />
-                                <span v-else>{{
-                                    app.name ? app.name[0].toUpperCase() : "?"
-                                }}</span>
                             </div>
-                            <div :class="appNameClass(app.name)">{{ app.name }}</div>
-                        </div>
-
-                        <p
-                            v-if="runningApps.length === 0"
-                            class="empty-list-message"
-                        >
-                            没有检测到其他运行中的应用
-                        </p>
+                        </UCard>
                     </div>
-                </div>
 
-                <div class="planning-actions">
-                    <div class="break-options-container">
-                        <!-- On break: show countdown -->
-                        <button
-                            v-if="isOnBreak"
-                            class="btn btn-ghost btn-full-width btn-disabled"
-                            disabled
-                        >
-                            ☕️ 休息中 {{ breakRemaining }}
-                        </button>
+                    <div class="mt-3 shrink-0 space-y-2">
+                        <template v-if="isOnBreak">
+                            <UButton color="neutral" variant="soft" block disabled leading-icon="i-lucide-coffee">
+                                休息中 {{ breakRemaining }}
+                            </UButton>
+                        </template>
 
-                        <!-- Not on break: normal toggle -->
                         <template v-else>
-                            <button
+                            <UButton
                                 v-if="!showFreeActivityOptions"
-                                class="btn btn-ghost btn-full-width"
+                                color="neutral"
+                                variant="outline"
+                                block
+                                leading-icon="i-lucide-coffee"
                                 @click="showFreeActivityOptions = true"
                             >
-                                ☕️ 休息一下 (自由活动)
-                            </button>
+                                休息一下 (自由活动)
+                            </UButton>
 
-                            <div v-else class="duration-options-grid">
-                                <button
-                                    class="btn btn-ghost btn-duration"
-                                    @click="startFreeActivity(5)"
-                                >
+                            <div v-else class="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                                <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(5)">
                                     5分
-                                </button>
-                                <button
-                                    class="btn btn-ghost btn-duration"
-                                    @click="startFreeActivity(10)"
-                                >
+                                </UButton>
+                                <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(10)">
                                     10分
-                                </button>
-                                <button
-                                    class="btn btn-ghost btn-duration"
-                                    @click="startFreeActivity(15)"
-                                >
+                                </UButton>
+                                <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(15)">
                                     15分
-                                </button>
-                                <button
-                                    class="btn btn-ghost btn-duration"
-                                    @click="startFreeActivity(30)"
-                                >
+                                </UButton>
+                                <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(30)">
                                     30分
-                                </button>
-                                <button
-                                    class="btn btn-ghost btn-duration"
-                                    @click="startFreeActivity(45)"
-                                >
+                                </UButton>
+                                <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(45)">
                                     45分
-                                </button>
-                                <input
+                                </UButton>
+                                <UInput
                                     v-model="customMinutes"
                                     type="number"
                                     min="1"
                                     max="480"
                                     placeholder="自定义"
-                                    class="task-input custom-duration-input"
                                     @keyup.enter="
                                         customMinutes &&
                                         startFreeActivity(Number(customMinutes))
@@ -746,307 +924,407 @@ async function loadHistory() {
                                 />
                             </div>
                         </template>
-                    </div>
 
-                    <button
-                        class="btn btn-success btn-full-width"
-                        @click="startFocus"
-                    >
-                        🚀 开始专注
-                    </button>
-                </div>
-            </div>
-
-            <div class="history-side-panel">
-                <HistoryList :sessions="sessionHistory" />
-            </div>
-        </div>
-
-        <!-- SETTINGS MODE -->
-        <div
-            v-else-if="!isFocusing && currentView === 'settings'"
-            class="overlay-card"
-        >
-            <div class="lock-icon">⚙️</div>
-            <h1 class="overlay-title">设置</h1>
-            <p class="overlay-subtitle">
-                配置默认白名单 APP，每次专注时自动选择
-            </p>
-
-            <div class="section">
-                <div class="section-header">
-                    <span class="section-label">📱 默认允许的 APP</span>
-                    <button
-                        class="btn btn-ghost btn-refresh"
-                        @click="openSettings"
-                    >
-                        刷新
-                    </button>
-                </div>
-                <div class="app-list">
-                    <div
-                        v-for="app in settingsApps"
-                        :key="app.bundle_id"
-                        class="app-item"
-                        :class="{
-                            selected: settingsWhitelist.has(app.bundle_id),
-                        }"
-                        @click="toggleSettingsApp(app.bundle_id)"
-                    >
-                        <div
-                            class="app-item-icon-placeholder"
-                            :class="{ 'has-image': !!app.icon_data_url }"
+                        <UButton
+                            color="success"
+                            variant="solid"
+                            block
+                            leading-icon="i-lucide-rocket"
+                            @click="startFocus"
                         >
-                            <img
-                                v-if="app.icon_data_url"
-                                :src="app.icon_data_url"
-                                :alt="app.name"
-                                class="app-item-icon-image"
-                            />
-                            <span v-else>{{
-                                app.name ? app.name[0].toUpperCase() : "?"
-                            }}</span>
-                        </div>
-                        <div :class="appNameClass(app.name)">{{ app.name }}</div>
+                            开始专注
+                        </UButton>
                     </div>
-
-                    <p
-                        v-if="settingsApps.length === 0"
-                        class="empty-list-message"
-                    >
-                        没有检测到其他运行中的应用
-                    </p>
                 </div>
-            </div>
 
-            <div class="section">
-                <div class="section-label">🚀 开机启动</div>
-                <label class="autostart-row">
-                    <USwitch
-                        v-model="autostartEnabled"
-                        :disabled="autostartLoading"
-                    />
-                    <span>开机自动启动 Focus Must</span>
-                </label>
-            </div>
-
-            <div class="settings-actions">
-                <button
-                    class="btn btn-ghost flex-1"
-                    @click="currentView = 'planning'"
+                <UCard
+                    variant="outline"
+                    class="h-full min-h-0 overflow-hidden"
+                    :ui="{ body: 'h-full min-h-0 overflow-hidden' }"
                 >
-                    返回
-                </button>
-                <button class="btn btn-success flex-1" @click="saveSettings">
-                    保存设置
-                </button>
+                    <HistoryList
+                        :sessions="sessionHistory"
+                        :has-more="historyHasMore"
+                        :is-loading="historyLoading"
+                        @load-more="loadMoreHistory"
+                    />
+                </UCard>
             </div>
-        </div>
+        </UCard>
 
-        <div
+        <UCard v-else-if="!isFocusing && currentView === 'settings'" class="w-[min(980px,92vw)] max-h-[88vh] overflow-hidden">
+            <template #header>
+                <div class="space-y-1">
+                    <div class="flex min-w-0 items-center gap-2">
+                        <UIcon name="i-lucide-settings-2" class="text-3xl text-primary" />
+                        <h1 class="text-xl font-semibold leading-tight">设置</h1>
+                    </div>
+                </div>
+            </template>
+
+            <div class="space-y-4 overflow-y-auto max-h-[62vh]">
+                <UCard variant="soft">
+                    <template #header>
+                        <div class="flex items-start justify-between gap-2">
+                            <div>
+                                <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                                    <UIcon name="i-lucide-layout-grid" class="text-base" />
+                                    <span>默认允许的 APP</span>
+                                </div>
+                                <p class="text-xs text-muted">配置默认白名单 APP，每次专注时自动选择</p>
+                            </div>
+                            <UButton color="neutral" variant="outline" size="xs" @click="openSettings">
+                                刷新
+                            </UButton>
+                        </div>
+                    </template>
+
+                    <div class="app-grid">
+                        <UCard
+                            v-for="app in settingsApps"
+                            :key="app.bundle_id"
+                            variant="outline"
+                            :class="['app-item', { selected: settingsWhitelist.has(app.bundle_id) }]"
+                            @click="toggleSettingsApp(app.bundle_id)"
+                        >
+                            <div class="app-item-icon-placeholder" :class="{ 'has-image': !!app.icon_data_url }">
+                                <img
+                                    v-if="app.icon_data_url"
+                                    :src="app.icon_data_url"
+                                    :alt="app.name"
+                                    class="app-item-icon-image"
+                                />
+                                <span v-else>{{ app.name ? app.name[0].toUpperCase() : "?" }}</span>
+                            </div>
+                            <div :class="appNameClass(app.name)">{{ app.name }}</div>
+                        </UCard>
+
+                        <UAlert
+                            v-if="settingsApps.length === 0"
+                            color="neutral"
+                            variant="soft"
+                            title="没有检测到其他运行中的应用"
+                            class="col-span-full"
+                        />
+                    </div>
+                </UCard>
+
+                <UCard variant="soft">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                                <UIcon name="i-lucide-power" class="text-base" />
+                                <span>开机启动</span>
+                            </p>
+                            <p class="text-xs text-muted">开机自动启动 Focus Must</p>
+                        </div>
+                        <USwitch v-model="autostartEnabled" :disabled="autostartLoading" />
+                    </div>
+                </UCard>
+            </div>
+
+            <template #footer>
+                <div class="flex gap-2">
+                    <UButton
+                        color="neutral"
+                        variant="outline"
+                        class="flex-1 justify-center text-center"
+                        @click="currentView = 'planning'"
+                    >
+                        <UIcon name="i-lucide-arrow-left" class="text-base" />
+                        返回
+                    </UButton>
+                    <UButton
+                        color="success"
+                        variant="solid"
+                        class="flex-1 justify-center text-center"
+                        @click="saveSettings"
+                    >
+                        <UIcon name="i-lucide-save" class="text-base" />
+                        保存设置
+                    </UButton>
+                </div>
+            </template>
+        </UCard>
+
+        <UCard
             v-else-if="!isFocusing && currentView === 'analytics'"
-            class="overlay-card analytics-card"
+            class="flex h-[86vh] w-[min(1080px,94vw)] flex-col overflow-hidden"
+            :ui="{ body: 'flex-1 min-h-0 overflow-hidden' }"
         >
-            <div class="lock-icon">📊</div>
-            <h1 class="overlay-title">统计分析</h1>
-            <p class="overlay-subtitle">专注与休息数据总览</p>
-
-            <div v-if="analyticsLoading" class="analytics-loading">正在计算统计数据...</div>
-
-            <div v-else-if="analyticsData" class="analytics-content">
-                <div class="analytics-summary-grid">
-                    <div class="analytics-summary-card">
-                        <div class="analytics-summary-label">总专注时长</div>
-                        <div class="analytics-summary-value">
-                            {{ formatDurationLabel(analyticsData.summary.total_focus_secs) }}
-                        </div>
+            <template #header>
+                <div class="space-y-1">
+                    <div class="flex min-w-0 items-center gap-2">
+                        <UIcon name="i-lucide-chart-column" class="text-3xl text-primary" />
+                        <h1 class="text-xl font-semibold leading-tight">统计分析</h1>
                     </div>
-                    <div class="analytics-summary-card">
-                        <div class="analytics-summary-label">总休息时长</div>
-                        <div class="analytics-summary-value">
-                            {{ formatDurationLabel(analyticsData.summary.total_break_secs) }}
-                        </div>
-                    </div>
-                    <div class="analytics-summary-card">
-                        <div class="analytics-summary-label">总会话数</div>
-                        <div class="analytics-summary-value">
-                            {{ analyticsData.summary.total_sessions }}
-                        </div>
-                    </div>
+                    <p class="text-sm text-muted">专注与休息数据总览</p>
                 </div>
+            </template>
 
-                <div class="analytics-section">
-                    <div class="section-label">📈 日趋势（近 30 天）</div>
-                    <div class="trend-bars">
-                        <div
-                            v-for="point in analyticsData.daily_trend"
-                            :key="point.day"
-                            class="trend-bar-item"
-                        >
-                            <div class="trend-bar-track">
-                                <div
-                                    class="trend-bar-fill"
-                                    :style="{
-                                        height: `${Math.max(4, (point.focus_secs / maxDailyFocusSecs) * 100)}%`,
-                                    }"
-                                ></div>
+            <div class="h-full min-h-0 space-y-3">
+                <UAlert
+                    v-if="analyticsLoading"
+                    color="neutral"
+                    variant="soft"
+                    title="正在计算统计数据..."
+                />
+
+                <template v-else-if="analyticsData">
+                    <div class="grid gap-2.5 sm:grid-cols-3">
+                        <UCard variant="soft">
+                            <div class="analytics-metric-card">
+                                <div class="analytics-metric-main">
+                                    <UIcon name="i-lucide-timer" class="analytics-metric-icon" />
+                                    <div class="analytics-metric-value-group">
+                                        <p class="analytics-metric-label">总专注时长</p>
+                                        <p class="analytics-metric-value">
+                                            {{ formatDurationLabel(analyticsData.summary.total_focus_secs) }}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="trend-bar-label">{{ point.day.slice(5) }}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="analytics-section">
-                    <div class="section-label">🕒 专注时段分布</div>
-                    <div class="hour-distribution-list">
-                        <div
-                            v-for="bucket in analyticsData.focus_hour_distribution"
-                            :key="bucket.hour"
-                            class="hour-distribution-item"
-                        >
-                            <div class="hour-label">{{ formatHourLabel(bucket.hour) }}</div>
-                            <div class="hour-track">
-                                <div
-                                    class="hour-fill"
-                                    :style="{
-                                        width: `${(bucket.focus_secs / maxHourFocusSecs) * 100}%`,
-                                    }"
-                                ></div>
+                        </UCard>
+                        <UCard variant="soft">
+                            <div class="analytics-metric-card">
+                                <div class="analytics-metric-main">
+                                    <UIcon name="i-lucide-coffee" class="analytics-metric-icon" />
+                                    <div class="analytics-metric-value-group">
+                                        <p class="analytics-metric-label">总休息时长</p>
+                                        <p class="analytics-metric-value">
+                                            {{ formatDurationLabel(analyticsData.summary.total_break_secs) }}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="hour-value">{{ formatDurationCompact(bucket.focus_secs) }}</div>
-                        </div>
+                        </UCard>
+                        <UCard variant="soft">
+                            <div class="analytics-metric-card">
+                                <div class="analytics-metric-main">
+                                    <UIcon name="i-lucide-list" class="analytics-metric-icon" />
+                                    <div class="analytics-metric-value-group">
+                                        <p class="analytics-metric-label">总会话数</p>
+                                        <p class="analytics-metric-value">
+                                            {{ analyticsData.summary.total_sessions }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </UCard>
                     </div>
-                </div>
+
+                    <UCard variant="soft">
+                        <template #header>
+                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                                <UIcon name="i-lucide-chart-line" class="text-base" />
+                                <span>日趋势（近 30 天）</span>
+                            </p>
+                        </template>
+                        <div v-if="dailyTrendChartPoints.length > 0" class="space-y-3">
+                            <div class="daily-trend-chart-wrap">
+                                <svg
+                                    class="daily-trend-chart"
+                                    viewBox="0 0 100 100"
+                                    preserveAspectRatio="none"
+                                    role="img"
+                                    aria-label="近30天专注时长趋势"
+                                    @mousemove="updateTrendHover"
+                                    @mouseleave="clearTrendHover"
+                                >
+                                    <defs>
+                                        <linearGradient id="dailyTrendArea" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stop-color="rgb(34 197 94 / 0.35)" />
+                                            <stop offset="100%" stop-color="rgb(34 197 94 / 0.04)" />
+                                        </linearGradient>
+                                    </defs>
+                                    <line
+                                        v-for="point in dailyTrendChartPoints"
+                                        :key="`grid-${point.day}`"
+                                        :x1="point.x"
+                                        :y1="DAILY_TREND_PLOT_TOP"
+                                        :x2="point.x"
+                                        :y2="DAILY_TREND_PLOT_BOTTOM"
+                                        class="daily-trend-grid-line"
+                                    />
+                                    <path :d="dailyTrendAreaPath" fill="url(#dailyTrendArea)" />
+                                    <path
+                                        :d="dailyTrendSmoothPath"
+                                        fill="none"
+                                        stroke="rgb(34 197 94)"
+                                        stroke-width="0.35"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    />
+                                    <line
+                                        v-if="activeTrendPoint"
+                                        :x1="activeTrendPoint.x"
+                                        :y1="DAILY_TREND_PLOT_TOP"
+                                        :x2="activeTrendPoint.x"
+                                        :y2="DAILY_TREND_PLOT_BOTTOM"
+                                        class="daily-trend-focus-line"
+                                    />
+                                </svg>
+
+                                <div
+                                    v-if="activeTrendPoint"
+                                    class="daily-trend-dot"
+                                    :style="{ left: `${activeTrendPoint.x}%`, top: `${activeTrendPoint.y}%` }"
+                                ></div>
+
+                                <div
+                                    v-if="activeTrendPoint"
+                                    class="daily-trend-tooltip"
+                                    :style="{ left: `${activeTrendPoint.x}%` }"
+                                >
+                                    <p class="daily-trend-tooltip-date">{{ activeTrendPoint.day }}</p>
+                                    <p class="daily-trend-tooltip-value">
+                                        {{ formatDurationCompact(activeTrendPoint.focusSecs) }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between gap-2">
+                                <div
+                                    v-for="point in dailyTrendLabelPoints"
+                                    :key="`label-${point.day}`"
+                                    class="min-w-0 text-center"
+                                >
+                                    <p class="text-[10px] text-muted">{{ point.day.slice(5) }}</p>
+                                    <p class="text-[10px] font-medium">{{ formatDurationCompact(point.focusSecs) }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-else class="py-6 text-center text-xs text-muted">
+                            暂无趋势数据
+                        </div>
+                    </UCard>
+
+                    <UCard variant="soft">
+                        <template #header>
+                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                                <UIcon name="i-lucide-clock-3" class="text-base" />
+                                <span>专注时段分布</span>
+                            </p>
+                        </template>
+                        <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                            <div
+                                v-for="bucket in analyticsData.focus_hour_distribution"
+                                :key="bucket.hour"
+                                class="grid grid-cols-[100px_1fr_64px] items-center gap-1"
+                            >
+                                <span class="hour-range-chip">{{ formatHourLabel(bucket.hour) }}</span>
+                                <UProgress :model-value="bucket.focus_secs" :max="maxHourFocusSecs" size="xs" />
+                                <span class="text-[11px] text-right text-muted whitespace-nowrap tabular-nums">{{ formatDurationCompact(bucket.focus_secs) }}</span>
+                            </div>
+                        </div>
+                    </UCard>
+                </template>
             </div>
 
-            <div class="settings-actions">
-                <button class="btn btn-ghost flex-1" @click="currentView = 'planning'">
-                    返回
-                </button>
-            </div>
-        </div>
+            <template #footer>
+                <div class="flex justify-end">
+                    <UButton
+                        color="neutral"
+                        variant="outline"
+                        leading-icon="i-lucide-arrow-left"
+                        @click="currentView = 'planning'"
+                    >
+                        返回
+                    </UButton>
+                </div>
+            </template>
+        </UCard>
 
-        <!-- FOCUS MODE (shown when blocking window reappears) -->
-        <div v-else-if="isFocusing" class="overlay-card focus-card">
-            <!-- Blocked App Alert -->
-            <div v-if="blockedAppState" class="blocked-alert">
-                <div class="lock-icon blocked-icon-lg">🚫</div>
-                <h2 class="overlay-title text-accent">检测到分心</h2>
-                <p class="overlay-subtitle mb-lg">
-                    你打开了 <strong>{{ blockedAppState.name }}</strong>
-                </p>
+        <UCard v-else-if="isFocusing" class="w-[min(760px,90vw)] text-center">
+            <div v-if="blockedAppState" class="space-y-4">
+                <UIcon name="i-lucide-circle-x" class="mx-auto block text-6xl text-error" />
+                <UAlert color="error" variant="soft" title="检测到分心">
+                    <template #description>
+                        你打开了 <strong>{{ blockedAppState.name }}</strong>
+                    </template>
+                </UAlert>
 
-                <!-- Has return target: show countdown -->
                 <template v-if="blockedAppState.return_to_bundle_id">
-                    <div class="countdown-circle">
-                        <div class="countdown-number">
-                            {{ returnCountdown }}
-                        </div>
-                        <div class="countdown-label">秒后返回</div>
-                    </div>
-                    <p class="focus-hint mt-lg">
-                        正在带你回到
-                        <strong>{{ blockedAppState.return_to_name }}</strong>
-                        ...
-                    </p>
+                    <UBadge color="error" variant="soft" class="px-4 py-2 text-base">
+                        {{ returnCountdown }} 秒后返回
+                    </UBadge>
+                    <UAlert color="neutral" variant="outline">
+                        <template #description>
+                            正在带你回到 <strong>{{ blockedAppState.return_to_name }}</strong> ...
+                        </template>
+                    </UAlert>
                 </template>
 
-                <!-- No return target: prompt manual switch -->
-                <template v-else>
-                    <p class="focus-hint mt-lg">
-                        ⚠️ 请使用 <strong>⌘+Tab</strong> 手动切换回工作 App
-                    </p>
-                </template>
+                <UAlert v-else color="warning" variant="soft">
+                    <template #description>
+                        <span class="inline-flex items-center gap-1.5">
+                            <UIcon name="i-lucide-triangle-alert" class="text-base" />
+                            <span>请使用 <strong>⌘+Tab</strong> 手动切换回工作 App</span>
+                        </span>
+                    </template>
+                </UAlert>
             </div>
 
-            <!-- Normal Focus State (Timer) -->
-            <div v-else>
-                <div class="focus-icon">🧘</div>
-                <h1 class="overlay-title">保持专注</h1>
+            <div v-else class="space-y-5">
+                <UIcon name="i-lucide-brain" class="mx-auto block text-6xl text-primary" />
+                <h1 class="text-2xl font-semibold">保持专注</h1>
 
                 <div class="timer-display">{{ formattedTime }}</div>
 
-                <div class="focus-task">
-                    {{ taskDescription || "正在完成一项重要的任务..." }}
-                </div>
+                <UAlert color="neutral" variant="soft">
+                    <template #description>
+                        {{ taskDescription || "正在完成一项重要的任务..." }}
+                    </template>
+                </UAlert>
 
-                <div class="allowed-apps" v-if="allowedAppNames.length > 0">
-                    <span
+                <div v-if="allowedAppNames.length > 0" class="flex flex-wrap justify-center gap-2">
+                    <UBadge
                         v-for="app in allowedAppNames"
                         :key="app.bundle_id"
-                        class="allowed-app-item"
+                        color="success"
+                        variant="soft"
+                        :label="app.name"
+                    />
+                </div>
+
+                <UAlert color="neutral" variant="outline">
+                    <template #description>
+                        试图打开其他应用时，窗口会再次出现提醒你。
+                    </template>
+                </UAlert>
+
+                <div class="flex justify-center">
+                    <UButton
+                        color="neutral"
+                        variant="outline"
+                        leading-icon="i-lucide-square"
+                        @click="requestEndFocus"
                     >
-                        {{ app.name }}
-                    </span>
-                </div>
-
-                <div class="focus-hint">
-                    试图打开其他应用时，窗口会再次出现提醒你。
-                </div>
-
-                <div class="btn-group">
-                    <button class="btn btn-ghost" @click="requestEndFocus">
                         结束专注
-                    </button>
+                    </UButton>
                 </div>
             </div>
 
-            <!-- End Focus Confirmation -->
-            <div v-if="showEndConfirm" class="confirm-overlay">
-                <p class="confirm-text">确定要结束本次专注吗？</p>
-                <div class="confirm-actions">
-                    <button class="btn btn-ghost" @click="cancelEndFocus">
-                        取消
-                    </button>
-                    <button class="btn btn-primary" @click="confirmEndFocus">
-                        确定结束
-                    </button>
-                </div>
-            </div>
-        </div>
+            <UModal
+                v-model:open="showEndConfirm"
+                title="结束专注"
+                description="确定要结束本次专注吗？"
+            >
+                <template #footer>
+                    <div class="flex w-full justify-end gap-2">
+                        <UButton color="neutral" variant="outline" @click="cancelEndFocus">
+                            取消
+                        </UButton>
+                        <UButton color="primary" @click="confirmEndFocus">确定结束</UButton>
+                    </div>
+                </template>
+            </UModal>
+        </UCard>
     </div>
 </template>
 
 <style scoped>
-.blocked-alert {
-    animation: fadeIn 0.3s ease;
-}
-.countdown-circle {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    border: 4px solid var(--accent);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto;
-    box-shadow: 0 0 20px rgba(233, 69, 96, 0.4);
-}
-.countdown-number {
-    font-size: 32px;
-    font-weight: 700;
-    color: var(--accent);
-    line-height: 1;
-}
-.countdown-label {
-    font-size: 10px;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    margin-top: 2px;
-}
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* Snow */
 .snow-canvas {
     position: fixed;
     inset: 0;
@@ -1055,57 +1333,304 @@ async function loadHistory() {
     pointer-events: none;
     z-index: 100000;
 }
-.settings-toggle-group {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    z-index: 10;
-    display: flex;
-    gap: 8px;
-}
-.snow-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 20px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    user-select: none;
-}
-.snow-toggle:hover {
-    background: rgba(255, 255, 255, 0.15);
-}
-.snow-toggle-icon {
-    font-size: 14px;
-}
-.snow-toggle-label {
-    font-size: 12px;
-    color: var(--text-secondary);
-    font-weight: 500;
-}
 
-.autostart-row {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-primary);
-    font-size: 14px;
-    cursor: pointer;
-}
-
-/* Confirm overlay */
-.confirm-overlay {
-    position: absolute;
+.overlay-container {
+    position: fixed;
     inset: 0;
-    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background:
+        radial-gradient(circle at 18% 14%, rgba(59, 130, 246, 0.08), transparent 42%),
+        radial-gradient(circle at 82% 86%, rgba(16, 185, 129, 0.06), transparent 44%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)),
+        rgba(20, 28, 44, 0.12);
+    backdrop-filter: blur(22px) saturate(130%);
+    -webkit-backdrop-filter: blur(22px) saturate(130%);
+}
+
+:global(html.light) .overlay-container {
+    background:
+        radial-gradient(circle at 18% 14%, rgba(59, 130, 246, 0.035), transparent 42%),
+        radial-gradient(circle at 82% 86%, rgba(16, 185, 129, 0.03), transparent 44%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015)),
+        rgba(236, 245, 255, 0.14);
+}
+
+.startup-spinner {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    border-top-color: rgba(16, 185, 129, 0.95);
+    animation: spin 0.9s linear infinite;
+}
+
+.shake {
+    animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.timer-display {
+    font-size: 56px;
+    font-weight: 700;
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 2px;
+}
+
+.analytics-metric-card {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    z-index: 10;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 24px;
+    min-height: 74px;
+}
+
+.analytics-metric-label {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.1;
+    color: color-mix(in oklab, currentColor 60%, transparent);
+}
+
+.analytics-metric-main {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.analytics-metric-value-group {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+}
+
+.analytics-metric-value {
+    margin: 0;
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.analytics-metric-icon {
+    font-size: 40px;
+    line-height: 1;
+    color: rgb(34 197 94);
+}
+
+.hour-range-chip {
+    display: inline-flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: color-mix(in oklab, rgb(34 197 94) 14%, transparent);
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: color-mix(in oklab, rgb(34 197 94) 72%, currentColor);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.daily-trend-chart-wrap {
+    position: relative;
+    height: 136px;
+    width: 100%;
+    border-radius: 12px;
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(148, 163, 184, 0.06);
+}
+
+.daily-trend-chart {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.daily-trend-grid-line {
+    stroke: rgba(148, 163, 184, 0.2);
+    stroke-width: 0.35;
+}
+
+.daily-trend-focus-line {
+    stroke: rgba(16, 185, 129, 0.7);
+    stroke-width: 0.45;
+    stroke-dasharray: 1.4 1.4;
+}
+
+.daily-trend-dot {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: rgb(16 185 129);
+    border: 2px solid rgb(255 255 255 / 0.92);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 1px rgb(16 185 129 / 0.2);
+    pointer-events: none;
+}
+
+.daily-trend-tooltip {
+    position: absolute;
+    top: 8px;
+    transform: translateX(-50%);
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(15, 23, 42, 0.86);
+    padding: 6px 8px;
+    pointer-events: none;
+    min-width: 82px;
+}
+
+.daily-trend-tooltip-date {
+    font-size: 10px;
+    color: rgba(226, 232, 240, 0.82);
+    line-height: 1.1;
+}
+
+.daily-trend-tooltip-value {
+    margin-top: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(240, 253, 244, 0.96);
+    line-height: 1.1;
+}
+
+.app-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    justify-content: stretch;
+    align-content: start;
+    gap: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 2px 6px;
+}
+
+.app-item {
+    width: 100%;
+    min-width: 0;
+    aspect-ratio: 1 / 1;
+    background: rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.2s ease;
+}
+
+.app-item:hover {
+    transform: translateY(-1px);
+}
+
+.app-item.selected {
+    border-color: rgba(16, 185, 129, 0.95);
+    background: rgba(16, 185, 129, 0.16);
+    box-shadow:
+        0 0 0 1px rgba(16, 185, 129, 0.42),
+        0 8px 16px rgba(16, 185, 129, 0.18);
+}
+
+.app-item :deep([data-slot="body"]) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 4px;
+    padding: 6px;
+}
+
+.app-item-icon-placeholder {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(148, 163, 184, 1);
+    background: rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+}
+
+.app-item-icon-placeholder.has-image {
+    background: transparent;
+}
+
+.app-item-icon-image {
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    object-fit: cover;
+    display: block;
+}
+
+@media (prefers-color-scheme: light) {
+    .app-item.selected {
+        border-color: rgba(5, 150, 105, 1);
+        background: rgba(16, 185, 129, 0.22);
+        box-shadow:
+            0 0 0 1px rgba(5, 150, 105, 0.48),
+            0 10px 18px rgba(5, 150, 105, 0.2);
+    }
+}
+
+.app-item-name {
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
+    max-width: 100%;
+    text-align: center;
+}
+
+.app-item-name.small {
+    font-size: 9px;
+}
+
+.app-item-name.tiny {
+    font-size: 8px;
+    line-height: 1.1;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes shake {
+    10%,
+    90% {
+        transform: translate3d(-1px, 0, 0);
+    }
+
+    20%,
+    80% {
+        transform: translate3d(2px, 0, 0);
+    }
+
+    30%,
+    50%,
+    70% {
+        transform: translate3d(-4px, 0, 0);
+    }
+
+    40%,
+    60% {
+        transform: translate3d(4px, 0, 0);
+    }
 }
 </style>

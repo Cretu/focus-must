@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 export interface SessionRecord {
   session_type: string
@@ -10,18 +10,32 @@ export interface SessionRecord {
   whitelist: string[]
 }
 
-const props = defineProps<{
-  sessions: SessionRecord[]
+const props = withDefaults(
+  defineProps<{
+    sessions: SessionRecord[]
+    hasMore?: boolean
+    isLoading?: boolean
+  }>(),
+  {
+    hasMore: false,
+    isLoading: false,
+  },
+)
+
+const emit = defineEmits<{
+  (e: 'load-more'): void
 }>()
+
+const historyListRef = ref<HTMLElement | null>(null)
 
 type HistoryTab = 'all' | 'focus' | 'break'
 
 const activeTab = ref<HistoryTab>('all')
 
-const tabs: { key: HistoryTab; label: string }[] = [
-  { key: 'all', label: '全部' },
-  { key: 'focus', label: '专注' },
-  { key: 'break', label: '休息' },
+const tabs: { key: HistoryTab; label: string; icon: string }[] = [
+  { key: 'all', label: '全部', icon: 'i-lucide-list-filter' },
+  { key: 'focus', label: '专注', icon: 'i-lucide-target' },
+  { key: 'break', label: '休息', icon: 'i-lucide-coffee' },
 ]
 
 function pad(value: number) {
@@ -37,7 +51,13 @@ function formatDuration(secs: number) {
   const hours = Math.floor(secs / 3600)
   const mins = Math.floor((secs % 3600) / 60)
   const seconds = secs % 60
-  return `${pad(hours)}:${pad(mins)}:${pad(seconds)}`
+
+  const parts: string[] = []
+  if (hours > 0) parts.push(`${hours}小时`)
+  if (mins > 0) parts.push(`${mins}分钟`)
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}秒`)
+
+  return parts.join('')
 }
 
 const filteredSessions = computed(() => {
@@ -57,50 +77,89 @@ const groupedSessions = computed(() => {
   }
   return Object.entries(groups).map(([date, items]) => ({ date, items }))
 })
+
+function maybeLoadMore() {
+  if (!props.hasMore || props.isLoading) {
+    return
+  }
+
+  const el = historyListRef.value
+  if (!el) {
+    return
+  }
+
+  const preloadDistance = 64
+  const isNearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - preloadDistance
+  if (isNearBottom) {
+    emit('load-more')
+  }
+}
+
+watch(
+  () => [props.sessions.length, props.hasMore, props.isLoading, activeTab.value],
+  () => {
+    void nextTick(maybeLoadMore)
+  },
+)
+
+onMounted(() => {
+  void nextTick(maybeLoadMore)
+})
 </script>
 
 <template>
   <div class="history-container">
-    <h3 class="history-title">最近记录</h3>
-
-    <div class="history-tabs" role="tablist" aria-label="历史记录筛选">
-      <button
-        v-for="tab in tabs"
-        :key="tab.key"
-        class="history-tab"
-        :class="{ active: activeTab === tab.key }"
-        role="tab"
-        type="button"
-        @click="activeTab = tab.key"
-      >
-        {{ tab.label }}
-      </button>
+    <div class="space-y-3">
+      <h3 class="text-sm font-semibold text-muted">最近记录</h3>
+      <UTabs
+        v-model="activeTab"
+        :items="tabs"
+        value-key="key"
+        label-key="label"
+        size="xs"
+        :content="false"
+      />
     </div>
-    
+
     <div v-if="filteredSessions.length === 0" class="empty-state">
-      <div class="empty-icon">📝</div>
-      <p>暂无记录</p>
+      <UAlert color="neutral" variant="soft" title="暂无记录" icon="i-lucide-notebook-pen" />
     </div>
 
-    <div v-else class="history-list">
-      <div v-for="group in groupedSessions" :key="group.date" class="history-group">
-        <div class="date-header">{{ group.date }}</div>
-        <div v-for="(session, index) in group.items" :key="index" class="history-item">
-          <div class="history-icon" :class="session.session_type">
-            {{ session.session_type === 'focus' ? '🎯' : '☕️' }}
-          </div>
-          <div class="history-content">
-            <div class="history-header">
-              <span class="history-time">
-                {{ formatTime(session.started_at) }} - {{ formatTime(session.ended_at) }}
-              </span>
-              <span class="history-duration">{{ formatDuration(session.duration_secs) }}</span>
+    <div v-else ref="historyListRef" class="history-list space-y-3" @scroll="maybeLoadMore">
+      <div v-for="group in groupedSessions" :key="group.date" class="space-y-2">
+        <div class="history-day-divider">{{ group.date }}</div>
+        <div class="space-y-2">
+          <div v-for="(session, index) in group.items" :key="index" class="history-row">
+            <div class="space-y-1">
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 text-xs text-muted">
+                  <UBadge
+                    :icon="session.session_type === 'focus' ? 'i-lucide-target' : 'i-lucide-coffee'"
+                    :color="session.session_type === 'focus' ? 'primary' : 'neutral'"
+                    :title="session.session_type === 'focus' ? '专注' : '休息'"
+                    :aria-label="session.session_type === 'focus' ? '专注' : '休息'"
+                    variant="soft"
+                  />
+                  <span :class="{ 'whitespace-nowrap': session.session_type === 'break' }">
+                    {{ formatTime(session.started_at) }} - {{ formatTime(session.ended_at) }}
+                  </span>
+                </div>
+                <span class="text-xs font-medium">{{ formatDuration(session.duration_secs) }}</span>
+              </div>
+              <div
+                v-if="session.session_type === 'focus' && session.task"
+                class="truncate text-sm"
+                :title="session.task"
+              >
+                {{ session.task }}
+              </div>
             </div>
-            <div v-if="session.task" class="history-task" :title="session.task">{{ session.task }}</div>
-            <div v-else-if="session.session_type === 'break'" class="history-task history-task-muted">休息</div>
           </div>
         </div>
       </div>
+
+      <div v-if="isLoading" class="history-load-state">加载中...</div>
+      <div v-else-if="!hasMore && sessions.length > 0" class="history-load-state">已加载全部记录</div>
     </div>
   </div>
 </template>
@@ -108,48 +167,10 @@ const groupedSessions = computed(() => {
 <style scoped>
 .history-container {
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
-}
-
-.history-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 12px;
-  flex-shrink: 0;
-}
-
-.history-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  margin-bottom: 14px;
-  flex-shrink: 0;
-}
-
-.history-tab {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-secondary);
-  border-radius: 8px;
-  font-size: 12px;
-  padding: 6px 0;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.history-tab:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-}
-
-.history-tab.active {
-  background: rgba(0, 212, 170, 0.15);
-  border-color: rgba(0, 212, 170, 0.45);
-  color: var(--text-primary);
+  gap: 12px;
 }
 
 .history-list {
@@ -160,83 +181,59 @@ const groupedSessions = computed(() => {
 }
 
 .history-list::-webkit-scrollbar {
-  width: 4px;
+  width: 8px;
 }
 .history-list::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(148, 163, 184, 0.14);
+  border-radius: 999px;
 }
 .history-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
 }
 
-.history-group {
-  margin-bottom: 16px;
-}
-
-.date-header {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-  opacity: 0.6;
-}
-
-.history-item {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding: 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  transition: background 0.2s;
-}
-
-.history-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.history-icon {
-  font-size: 16px;
-  padding-top: 2px;
-}
-
-.history-content {
-  flex: 1;
-  overflow: hidden;
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-}
-
-.history-task {
-  font-size: 13px;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.history-task-muted {
-  opacity: 0.6;
+.history-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.72);
 }
 
 .empty-state {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  color: var(--text-secondary);
-  font-size: 13px;
-  opacity: 0.6;
 }
-.empty-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
+
+.history-day-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in oklab, currentColor 72%, transparent);
+}
+
+.history-day-divider::before,
+.history-day-divider::after {
+  content: '';
+  flex: 1;
+  height: 1.5px;
+  background: rgba(148, 163, 184, 0.45);
+}
+
+.history-row {
+  padding: 8px 2px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.26);
+}
+
+.history-row:last-child {
+  border-bottom: none;
+}
+
+.history-load-state {
+  padding: 6px 0 2px;
+  text-align: center;
+  font-size: 11px;
+  color: color-mix(in oklab, currentColor 66%, transparent);
 }
 </style>
