@@ -12,6 +12,12 @@ const DB_FILE: &str = "history.db";
 pub struct UserSettings {
     #[serde(default)]
     pub default_whitelist: Vec<String>,
+    #[serde(default = "default_locale")]
+    pub locale: String,
+}
+
+fn default_locale() -> String {
+    "system".to_string()
 }
 
 impl Default for UserSettings {
@@ -22,6 +28,7 @@ impl Default for UserSettings {
                 "com.apple.systempreferences".to_string(),
                 "com.focus-must".to_string(),
             ],
+            locale: default_locale(),
         }
     }
 }
@@ -189,7 +196,10 @@ pub fn load_settings() -> UserSettings {
             }
         }
     }
-    UserSettings::default()
+
+    let settings = UserSettings::default();
+    save_settings(&settings);
+    settings
 }
 
 pub fn save_settings(settings: &UserSettings) {

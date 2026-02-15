@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 export interface SessionRecord {
   session_type: string
@@ -27,16 +28,17 @@ const emit = defineEmits<{
 }>()
 
 const historyListRef = ref<HTMLElement | null>(null)
+const { t } = useI18n()
 
 type HistoryTab = 'all' | 'focus' | 'break'
 
 const activeTab = ref<HistoryTab>('all')
 
-const tabs: { key: HistoryTab; label: string; icon: string }[] = [
-  { key: 'all', label: '全部', icon: 'i-lucide-list-filter' },
-  { key: 'focus', label: '专注', icon: 'i-lucide-target' },
-  { key: 'break', label: '休息', icon: 'i-lucide-coffee' },
-]
+const tabs = computed(() => [
+  { key: 'all', label: t('history.all'), icon: 'i-lucide-list-filter' },
+  { key: 'focus', label: t('history.focus'), icon: 'i-lucide-target' },
+  { key: 'break', label: t('history.break'), icon: 'i-lucide-coffee' },
+])
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -53,9 +55,9 @@ function formatDuration(secs: number) {
   const seconds = secs % 60
 
   const parts: string[] = []
-  if (hours > 0) parts.push(`${hours}小时`)
-  if (mins > 0) parts.push(`${mins}分钟`)
-  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}秒`)
+  if (hours > 0) parts.push(t('duration.hours', { count: hours }))
+  if (mins > 0) parts.push(t('duration.minutes', { count: mins }))
+  if (seconds > 0 || parts.length === 0) parts.push(t('duration.seconds', { count: seconds }))
 
   return parts.join('')
 }
@@ -110,7 +112,7 @@ onMounted(() => {
 <template>
   <div class="history-container">
     <div class="space-y-3">
-      <h3 class="text-sm font-semibold text-muted">最近记录</h3>
+      <h3 class="text-sm font-semibold text-muted">{{ t('history.title') }}</h3>
       <UTabs
         v-model="activeTab"
         :items="tabs"
@@ -122,7 +124,7 @@ onMounted(() => {
     </div>
 
     <div v-if="filteredSessions.length === 0" class="empty-state">
-      <UAlert color="neutral" variant="soft" title="暂无记录" icon="i-lucide-notebook-pen" />
+      <UAlert color="neutral" variant="soft" :title="t('history.empty')" icon="i-lucide-notebook-pen" />
     </div>
 
     <div v-else ref="historyListRef" class="history-list space-y-3" @scroll="maybeLoadMore">
@@ -136,8 +138,8 @@ onMounted(() => {
                   <UBadge
                     :icon="session.session_type === 'focus' ? 'i-lucide-target' : 'i-lucide-coffee'"
                     :color="session.session_type === 'focus' ? 'primary' : 'neutral'"
-                    :title="session.session_type === 'focus' ? '专注' : '休息'"
-                    :aria-label="session.session_type === 'focus' ? '专注' : '休息'"
+                    :title="session.session_type === 'focus' ? t('history.focus') : t('history.break')"
+                    :aria-label="session.session_type === 'focus' ? t('history.focus') : t('history.break')"
                     variant="soft"
                   />
                   <span :class="{ 'whitespace-nowrap': session.session_type === 'break' }">
@@ -158,8 +160,8 @@ onMounted(() => {
         </div>
       </div>
 
-      <div v-if="isLoading" class="history-load-state">加载中...</div>
-      <div v-else-if="!hasMore && sessions.length > 0" class="history-load-state">已加载全部记录</div>
+      <div v-if="isLoading" class="history-load-state">{{ t('history.loading') }}</div>
+      <div v-else-if="!hasMore && sessions.length > 0" class="history-load-state">{{ t('history.loadedAll') }}</div>
     </div>
   </div>
 </template>
@@ -178,18 +180,32 @@ onMounted(() => {
   min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 
 .history-list::-webkit-scrollbar {
-  width: 8px;
+  width: 4px;
 }
 .history-list::-webkit-scrollbar-track {
-  background: rgba(148, 163, 184, 0.14);
+  background: transparent;
   border-radius: 999px;
 }
 .history-list::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
+  background: transparent;
   border-radius: 999px;
+}
+
+.history-list:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.56) transparent;
+}
+
+.history-list:hover::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.history-list:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.56);
 }
 
 .history-list::-webkit-scrollbar-thumb:hover {

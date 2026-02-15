@@ -2,6 +2,8 @@
 import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useI18n } from "vue-i18n";
+import { en, zh_cn } from "@nuxt/ui/locale";
 import {
     isEnabled as isAutostartEnabled,
     enable as enableAutostart,
@@ -10,6 +12,12 @@ import {
 import { useSnowEffect } from "./composables/useSnowEffect";
 import { useBreakTimer } from "./composables/useBreakTimer";
 import HistoryList, { type SessionRecord } from "./components/HistoryList.vue";
+import {
+    isSupportedLocale,
+    localeOptionsWithText,
+    type LocaleCode,
+    type PreferredLocale,
+} from "./i18n";
 
 interface AppInfo {
     name: string;
@@ -30,6 +38,7 @@ interface AppState {
     session_whitelist: string[];
     focus_started_at: number | null;
     free_activity_end_at: number | null;
+    locale: PreferredLocale;
 }
 
 interface AnalyticsSummary {
@@ -64,6 +73,32 @@ interface HistoryPage {
 }
 
 const HISTORY_PAGE_SIZE = 100;
+
+const { t, locale } = useI18n();
+
+const selectedLocale = ref<PreferredLocale>("system");
+
+const effectiveLocale = computed<LocaleCode>(() => {
+    if (selectedLocale.value === "system") {
+        return navigator.language.toLowerCase().startsWith("en")
+            ? "en-US"
+            : "zh-CN";
+    }
+
+    return selectedLocale.value;
+});
+
+watch(
+    effectiveLocale,
+    (nextLocale) => {
+        locale.value = nextLocale;
+    },
+    { immediate: true },
+);
+
+const nuxtUiLocale = computed(() =>
+    effectiveLocale.value === "en-US" ? en : zh_cn,
+);
 
 // --- Helpers ---
 function toggleSetItem(set: Set<string>, item: string): Set<string> {
@@ -116,6 +151,7 @@ const appState = ref<AppState>({
     session_whitelist: [],
     focus_started_at: null,
     free_activity_end_at: null,
+    locale: "system",
 });
 
 const isTaskInputShaking = ref(false);
@@ -133,6 +169,7 @@ const returnCountdown = ref(3);
 // Settings state
 const settingsApps = ref<AppInfo[]>([]);
 const settingsWhitelist = ref<Set<string>>(new Set());
+const settingsLocale = ref<PreferredLocale>("system");
 const autostartEnabled = ref(false);
 const autostartLoading = ref(false);
 
@@ -371,9 +408,9 @@ function formatDurationLabel(totalSeconds: number): string {
     const hours = Math.floor(totalSeconds / 3600);
     const mins = Math.floor((totalSeconds % 3600) / 60);
     if (hours > 0) {
-        return `${hours}h ${mins}m`;
+        return t("duration.hoursLabel", { hours, minutes: mins });
     }
-    return `${mins}m`;
+    return t("duration.minutesLabel", { minutes: mins });
 }
 
 function formatDurationCompact(totalSeconds: number): string {
@@ -381,9 +418,12 @@ function formatDurationCompact(totalSeconds: number): string {
     if (mins >= 60) {
         const h = Math.floor(mins / 60);
         const m = mins % 60;
-        return `${h}h${m > 0 ? `${m}m` : ""}`;
+        return t("duration.hoursCompact", {
+            hours: h,
+            minutes: m > 0 ? t("duration.minutesCompact", { minutes: m }) : "",
+        }).trim();
     }
-    return `${mins}m`;
+    return t("duration.minutesCompact", { minutes: mins });
 }
 
 function formatHourLabel(hour: number): string {
@@ -436,6 +476,15 @@ watch(taskDescription, (value) => {
         isTaskInputInvalid.value = false;
     }
 });
+
+watch(
+    () => appState.value.locale,
+    (nextLocale) => {
+        if (isSupportedLocale(nextLocale)) {
+            selectedLocale.value = nextLocale;
+        }
+    },
+);
 
 function applyRecentTask(task: string) {
     taskDescription.value = task;
@@ -557,6 +606,7 @@ async function openSettings() {
         });
         void hydrateIcons("settings");
         settingsWhitelist.value = new Set(appState.value.default_whitelist);
+        settingsLocale.value = appState.value.locale;
 
         autostartEnabled.value = await isAutostartEnabled();
     } catch (e) {
@@ -602,6 +652,12 @@ async function saveSettings() {
         autostartLoading.value = false;
     }
 
+    try {
+        await invoke("set_locale", { locale: settingsLocale.value });
+    } catch (e) {
+        console.error("Failed to update locale:", e);
+    }
+
     currentView.value = "planning";
     initSelectedFromWhitelist();
 }
@@ -632,6 +688,9 @@ function startReturnCountdown() {
 
 async function loadState() {
     appState.value = await invoke<AppState>("get_state");
+    if (isSupportedLocale(appState.value.locale)) {
+        selectedLocale.value = appState.value.locale;
+    }
 }
 
 async function loadApps(includeIcons = false) {
@@ -727,6 +786,7 @@ function loadMoreHistory() {
 </script>
 
 <template>
+    <UApp :locale="nuxtUiLocale">
     <div class="overlay-container">
         <canvas ref="snowCanvas" class="snow-canvas" v-show="snowEnabled"></canvas>
 
@@ -735,7 +795,7 @@ function loadMoreHistory() {
                 <div class="startup-spinner" aria-hidden="true"></div>
                 <h1 class="text-xl font-semibold">Focus Must</h1>
                 <UProgress :model-value="null" size="sm" />
-                <p class="text-sm text-muted">正在加载应用列表...</p>
+                <p class="text-sm text-muted">{{ t("app.startupLoadingApps") }}</p>
             </div>
         </UCard>
 
@@ -748,7 +808,7 @@ function loadMoreHistory() {
                 <div class="flex items-start justify-between gap-3">
                     <div class="flex min-w-0 items-center gap-2">
                         <UIcon name="i-lucide-lock" class="text-3xl text-primary" />
-                        <h1 class="text-xl font-semibold leading-tight">Focus Must：先想清楚要做什么，再开始</h1>
+                        <h1 class="text-xl font-semibold leading-tight">{{ t("app.planningTitle") }}</h1>
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <UButton
@@ -758,16 +818,16 @@ function loadMoreHistory() {
                             @click="snowEnabled = !snowEnabled"
                             :leading-icon="snowEnabled ? 'i-lucide-snowflake' : 'i-lucide-moon-star'"
                         >
-                            {{ snowEnabled ? "下雪中" : "下雪" }}
+                            {{ snowEnabled ? t("app.snowing") : t("app.snow") }}
                         </UButton>
                         <UButton
                             color="neutral"
                             variant="outline"
                             size="sm"
-                            leading-icon="i-lucide-settings-2"
+                            leading-icon="i-lucide-settings"
                             @click="openSettings"
                         >
-                            设置
+                            {{ t("app.settings") }}
                         </UButton>
                         <UButton
                             color="neutral"
@@ -776,9 +836,12 @@ function loadMoreHistory() {
                             leading-icon="i-lucide-chart-column"
                             @click="openAnalytics"
                         >
-                            统计
+                            {{ t("app.analytics") }}
                         </UButton>
-                        <UColorModeSelect size="sm" class="min-w-28" />
+                        <UColorModeSelect
+                            size="sm"
+                            class="w-28"
+                        />
                     </div>
                 </div>
             </template>
@@ -790,7 +853,7 @@ function loadMoreHistory() {
                             <template #header>
                                 <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
                                     <UIcon name="i-lucide-clipboard-list" class="text-base" />
-                                    <span>接下来做什么</span>
+                                    <span>{{ t("app.nextTask") }}</span>
                                 </div>
                             </template>
                             <div class="space-y-3">
@@ -800,13 +863,13 @@ function loadMoreHistory() {
                                     autoresize
                                     :color="isTaskInputInvalid ? 'error' : 'success'"
                                     :highlight="isTaskInputInvalid"
-                                    placeholder="描述你接下来要完成的任务..."
+                                    :placeholder="t('app.taskPlaceholder')"
                                     @focus="isTaskInputInvalid = false"
                                     :class="['w-full', isTaskInputShaking ? 'shake' : '']"
                                 />
 
                                 <div v-if="recentTaskSuggestions.length > 0" class="flex items-center gap-2">
-                                    <div class="shrink-0 text-xs text-muted">最近任务</div>
+                                    <div class="shrink-0 text-xs text-muted">{{ t("app.recentTasks") }}</div>
                                     <div class="flex flex-wrap gap-2">
                                         <UButton
                                             v-for="task in visibleRecentTasks"
@@ -824,7 +887,7 @@ function loadMoreHistory() {
                                             :items="recentTaskMenuItems"
                                         >
                                             <UButton color="neutral" variant="soft" size="xs">
-                                                更多 ({{ hiddenRecentTasks.length }})
+                                                {{ t("app.moreCount", { count: hiddenRecentTasks.length }) }}
                                             </UButton>
                                         </UDropdownMenu>
                                     </div>
@@ -837,10 +900,10 @@ function loadMoreHistory() {
                                 <div class="flex items-center justify-between gap-2">
                                     <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
                                         <UIcon name="i-lucide-layout-grid" class="text-base" />
-                                        <span>需要用到的 APP</span>
+                                        <span>{{ t("app.appsNeeded") }}</span>
                                     </div>
                                     <UButton color="neutral" variant="outline" size="xs" @click="loadApps()">
-                                        刷新
+                                        {{ t("app.refresh") }}
                                     </UButton>
                                 </div>
                             </template>
@@ -869,7 +932,7 @@ function loadMoreHistory() {
                                     v-if="runningApps.length === 0"
                                     color="neutral"
                                     variant="soft"
-                                    title="没有检测到其他运行中的应用"
+                                    :title="t('app.noRunningApps')"
                                     class="col-span-full"
                                 />
                             </div>
@@ -879,7 +942,7 @@ function loadMoreHistory() {
                     <div class="mt-3 shrink-0 space-y-2">
                         <template v-if="isOnBreak">
                             <UButton color="neutral" variant="soft" block disabled leading-icon="i-lucide-coffee">
-                                休息中 {{ breakRemaining }}
+                                {{ t("app.breakInProgress", { time: breakRemaining }) }}
                             </UButton>
                         </template>
 
@@ -892,31 +955,31 @@ function loadMoreHistory() {
                                 leading-icon="i-lucide-coffee"
                                 @click="showFreeActivityOptions = true"
                             >
-                                休息一下 (自由活动)
+                                {{ t("app.takeBreakFree") }}
                             </UButton>
 
                             <div v-else class="grid grid-cols-3 gap-2 sm:grid-cols-6">
                                 <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(5)">
-                                    5分
+                                    {{ t("app.minutesShort", { minutes: 5 }) }}
                                 </UButton>
                                 <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(10)">
-                                    10分
+                                    {{ t("app.minutesShort", { minutes: 10 }) }}
                                 </UButton>
                                 <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(15)">
-                                    15分
+                                    {{ t("app.minutesShort", { minutes: 15 }) }}
                                 </UButton>
                                 <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(30)">
-                                    30分
+                                    {{ t("app.minutesShort", { minutes: 30 }) }}
                                 </UButton>
                                 <UButton color="neutral" variant="outline" size="sm" @click="startFreeActivity(45)">
-                                    45分
+                                    {{ t("app.minutesShort", { minutes: 45 }) }}
                                 </UButton>
                                 <UInput
                                     v-model="customMinutes"
                                     type="number"
                                     min="1"
                                     max="480"
-                                    placeholder="自定义"
+                                    :placeholder="t('app.custom')"
                                     @keyup.enter="
                                         customMinutes &&
                                         startFreeActivity(Number(customMinutes))
@@ -932,7 +995,7 @@ function loadMoreHistory() {
                             leading-icon="i-lucide-rocket"
                             @click="startFocus"
                         >
-                            开始专注
+                            {{ t("app.startFocus") }}
                         </UButton>
                     </div>
                 </div>
@@ -956,8 +1019,8 @@ function loadMoreHistory() {
             <template #header>
                 <div class="space-y-1">
                     <div class="flex min-w-0 items-center gap-2">
-                        <UIcon name="i-lucide-settings-2" class="text-3xl text-primary" />
-                        <h1 class="text-xl font-semibold leading-tight">设置</h1>
+                        <UIcon name="i-lucide-settings" class="text-3xl text-primary" />
+                        <h1 class="text-xl font-semibold leading-tight">{{ t("app.settingsTitle") }}</h1>
                     </div>
                 </div>
             </template>
@@ -969,12 +1032,12 @@ function loadMoreHistory() {
                             <div>
                                 <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
                                     <UIcon name="i-lucide-layout-grid" class="text-base" />
-                                    <span>默认允许的 APP</span>
+                                    <span>{{ t("app.defaultAllowedApps") }}</span>
                                 </div>
-                                <p class="text-xs text-muted">配置默认白名单 APP，每次专注时自动选择</p>
+                                <p class="text-xs text-muted">{{ t("app.defaultAllowedAppsSubtitle") }}</p>
                             </div>
                             <UButton color="neutral" variant="outline" size="xs" @click="openSettings">
-                                刷新
+                                {{ t("app.refresh") }}
                             </UButton>
                         </div>
                     </template>
@@ -1003,7 +1066,7 @@ function loadMoreHistory() {
                             v-if="settingsApps.length === 0"
                             color="neutral"
                             variant="soft"
-                            title="没有检测到其他运行中的应用"
+                            :title="t('app.noRunningApps')"
                             class="col-span-full"
                         />
                     </div>
@@ -1014,11 +1077,38 @@ function loadMoreHistory() {
                         <div>
                             <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
                                 <UIcon name="i-lucide-power" class="text-base" />
-                                <span>开机启动</span>
+                                <span>{{ t("app.autostart") }}</span>
                             </p>
-                            <p class="text-xs text-muted">开机自动启动 Focus Must</p>
+                            <p class="text-xs text-muted">{{ t("app.autostartSubtitle") }}</p>
                         </div>
                         <USwitch v-model="autostartEnabled" :disabled="autostartLoading" />
+                    </div>
+                </UCard>
+
+                <UCard variant="soft">
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                                <UIcon name="i-lucide-languages" class="text-base" />
+                                <span>{{ t("app.defaultLanguage") }}</span>
+                            </p>
+                            <USelect
+                                v-model="settingsLocale"
+                                :items="localeOptionsWithText"
+                                value-key="value"
+                                label-key="label"
+                                size="sm"
+                                class="w-32"
+                            />
+                        </div>
+
+                        <div class="flex items-center justify-between gap-3">
+                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                                <UIcon name="i-lucide-sun-moon" class="text-base" />
+                                <span>{{ t("app.defaultAppearance") }}</span>
+                            </p>
+                            <UColorModeSelect size="sm" class="w-28" />
+                        </div>
                     </div>
                 </UCard>
             </div>
@@ -1032,7 +1122,7 @@ function loadMoreHistory() {
                         @click="currentView = 'planning'"
                     >
                         <UIcon name="i-lucide-arrow-left" class="text-base" />
-                        返回
+                        {{ t("app.back") }}
                     </UButton>
                     <UButton
                         color="success"
@@ -1041,7 +1131,7 @@ function loadMoreHistory() {
                         @click="saveSettings"
                     >
                         <UIcon name="i-lucide-save" class="text-base" />
-                        保存设置
+                        {{ t("app.saveSettings") }}
                     </UButton>
                 </div>
             </template>
@@ -1056,9 +1146,9 @@ function loadMoreHistory() {
                 <div class="space-y-1">
                     <div class="flex min-w-0 items-center gap-2">
                         <UIcon name="i-lucide-chart-column" class="text-3xl text-primary" />
-                        <h1 class="text-xl font-semibold leading-tight">统计分析</h1>
+                        <h1 class="text-xl font-semibold leading-tight">{{ t("app.analyticsTitle") }}</h1>
                     </div>
-                    <p class="text-sm text-muted">专注与休息数据总览</p>
+                    <p class="text-sm text-muted">{{ t("app.analyticsSubtitle") }}</p>
                 </div>
             </template>
 
@@ -1067,7 +1157,7 @@ function loadMoreHistory() {
                     v-if="analyticsLoading"
                     color="neutral"
                     variant="soft"
-                    title="正在计算统计数据..."
+                    :title="t('app.analyticsLoading')"
                 />
 
                 <template v-else-if="analyticsData">
@@ -1077,7 +1167,7 @@ function loadMoreHistory() {
                                 <div class="analytics-metric-main">
                                     <UIcon name="i-lucide-timer" class="analytics-metric-icon" />
                                     <div class="analytics-metric-value-group">
-                                        <p class="analytics-metric-label">总专注时长</p>
+                                        <p class="analytics-metric-label">{{ t("app.totalFocusDuration") }}</p>
                                         <p class="analytics-metric-value">
                                             {{ formatDurationLabel(analyticsData.summary.total_focus_secs) }}
                                         </p>
@@ -1090,7 +1180,7 @@ function loadMoreHistory() {
                                 <div class="analytics-metric-main">
                                     <UIcon name="i-lucide-coffee" class="analytics-metric-icon" />
                                     <div class="analytics-metric-value-group">
-                                        <p class="analytics-metric-label">总休息时长</p>
+                                        <p class="analytics-metric-label">{{ t("app.totalBreakDuration") }}</p>
                                         <p class="analytics-metric-value">
                                             {{ formatDurationLabel(analyticsData.summary.total_break_secs) }}
                                         </p>
@@ -1103,7 +1193,7 @@ function loadMoreHistory() {
                                 <div class="analytics-metric-main">
                                     <UIcon name="i-lucide-list" class="analytics-metric-icon" />
                                     <div class="analytics-metric-value-group">
-                                        <p class="analytics-metric-label">总会话数</p>
+                                        <p class="analytics-metric-label">{{ t("app.totalSessions") }}</p>
                                         <p class="analytics-metric-value">
                                             {{ analyticsData.summary.total_sessions }}
                                         </p>
@@ -1117,7 +1207,7 @@ function loadMoreHistory() {
                         <template #header>
                             <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
                                 <UIcon name="i-lucide-chart-line" class="text-base" />
-                                <span>日趋势（近 30 天）</span>
+                                <span>{{ t("app.dailyTrend") }}</span>
                             </p>
                         </template>
                         <div v-if="dailyTrendChartPoints.length > 0" class="space-y-3">
@@ -1127,7 +1217,7 @@ function loadMoreHistory() {
                                     viewBox="0 0 100 100"
                                     preserveAspectRatio="none"
                                     role="img"
-                                    aria-label="近30天专注时长趋势"
+                                    :aria-label="t('app.dailyTrendAria')"
                                     @mousemove="updateTrendHover"
                                     @mouseleave="clearTrendHover"
                                 >
@@ -1196,7 +1286,7 @@ function loadMoreHistory() {
                         </div>
 
                         <div v-else class="py-6 text-center text-xs text-muted">
-                            暂无趋势数据
+                            {{ t("app.noTrendData") }}
                         </div>
                     </UCard>
 
@@ -1204,7 +1294,7 @@ function loadMoreHistory() {
                         <template #header>
                             <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
                                 <UIcon name="i-lucide-clock-3" class="text-base" />
-                                <span>专注时段分布</span>
+                                <span>{{ t("app.focusHourDistribution") }}</span>
                             </p>
                         </template>
                         <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
@@ -1230,7 +1320,7 @@ function loadMoreHistory() {
                         leading-icon="i-lucide-arrow-left"
                         @click="currentView = 'planning'"
                     >
-                        返回
+                        {{ t("app.back") }}
                     </UButton>
                 </div>
             </template>
@@ -1239,19 +1329,19 @@ function loadMoreHistory() {
         <UCard v-else-if="isFocusing" class="w-[min(760px,90vw)] text-center">
             <div v-if="blockedAppState" class="space-y-4">
                 <UIcon name="i-lucide-circle-x" class="mx-auto block text-6xl text-error" />
-                <UAlert color="error" variant="soft" title="检测到分心">
+                <UAlert color="error" variant="soft" :title="t('app.blockedDetected')">
                     <template #description>
-                        你打开了 <strong>{{ blockedAppState.name }}</strong>
+                        {{ t("app.openedApp", { name: blockedAppState.name }) }}
                     </template>
                 </UAlert>
 
                 <template v-if="blockedAppState.return_to_bundle_id">
                     <UBadge color="error" variant="soft" class="px-4 py-2 text-base">
-                        {{ returnCountdown }} 秒后返回
+                        {{ t("app.returnInSeconds", { seconds: returnCountdown }) }}
                     </UBadge>
                     <UAlert color="neutral" variant="outline">
                         <template #description>
-                            正在带你回到 <strong>{{ blockedAppState.return_to_name }}</strong> ...
+                            {{ t("app.returningTo", { name: blockedAppState.return_to_name }) }}
                         </template>
                     </UAlert>
                 </template>
@@ -1260,7 +1350,7 @@ function loadMoreHistory() {
                     <template #description>
                         <span class="inline-flex items-center gap-1.5">
                             <UIcon name="i-lucide-triangle-alert" class="text-base" />
-                            <span>请使用 <strong>⌘+Tab</strong> 手动切换回工作 App</span>
+                            <span>{{ t("app.manualSwitchHint") }}</span>
                         </span>
                     </template>
                 </UAlert>
@@ -1268,13 +1358,13 @@ function loadMoreHistory() {
 
             <div v-else class="space-y-5">
                 <UIcon name="i-lucide-brain" class="mx-auto block text-6xl text-primary" />
-                <h1 class="text-2xl font-semibold">保持专注</h1>
+                <h1 class="text-2xl font-semibold">{{ t("app.keepFocus") }}</h1>
 
                 <div class="timer-display">{{ formattedTime }}</div>
 
                 <UAlert color="neutral" variant="soft">
                     <template #description>
-                        {{ taskDescription || "正在完成一项重要的任务..." }}
+                        {{ taskDescription || t("app.focusTaskFallback") }}
                     </template>
                 </UAlert>
 
@@ -1290,7 +1380,7 @@ function loadMoreHistory() {
 
                 <UAlert color="neutral" variant="outline">
                     <template #description>
-                        试图打开其他应用时，窗口会再次出现提醒你。
+                        {{ t("app.focusHint") }}
                     </template>
                 </UAlert>
 
@@ -1301,27 +1391,28 @@ function loadMoreHistory() {
                         leading-icon="i-lucide-square"
                         @click="requestEndFocus"
                     >
-                        结束专注
+                        {{ t("app.endFocus") }}
                     </UButton>
                 </div>
             </div>
 
             <UModal
                 v-model:open="showEndConfirm"
-                title="结束专注"
-                description="确定要结束本次专注吗？"
+                :title="t('app.confirmEndTitle')"
+                :description="t('app.confirmEndDescription')"
             >
                 <template #footer>
                     <div class="flex w-full justify-end gap-2">
                         <UButton color="neutral" variant="outline" @click="cancelEndFocus">
-                            取消
+                            {{ t("app.cancel") }}
                         </UButton>
-                        <UButton color="primary" @click="confirmEndFocus">确定结束</UButton>
+                        <UButton color="primary" @click="confirmEndFocus">{{ t("app.confirmEnd") }}</UButton>
                     </div>
                 </template>
             </UModal>
         </UCard>
     </div>
+    </UApp>
 </template>
 
 <style scoped>
@@ -1501,6 +1592,7 @@ function loadMoreHistory() {
     color: rgba(240, 253, 244, 0.96);
     line-height: 1.1;
 }
+
 
 .app-grid {
     display: grid;

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
-    menu::{IconMenuItem, Menu, MenuItem, NativeIcon},
+    menu::{IconMenuItem, Menu, NativeIcon},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
@@ -26,6 +26,7 @@ pub struct AppState {
     pub focus_started_at: Option<u64>,
     pub free_activity_started_at: Option<u64>,
     pub free_activity_end_at: Option<u64>,
+    pub locale: String,
 }
 
 impl Default for AppState {
@@ -42,6 +43,7 @@ impl Default for AppState {
             focus_started_at: None,
             free_activity_started_at: None,
             free_activity_end_at: None,
+            locale: "system".to_string(),
         }
     }
 }
@@ -59,48 +61,193 @@ impl AppState {
     }
 }
 
+fn detect_system_locale() -> &'static str {
+    let lang = std::env::var("LANG")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if lang.starts_with("en") {
+        "en-US"
+    } else {
+        "zh-CN"
+    }
+}
+
+fn normalize_locale(locale: &str) -> &'static str {
+    if locale.eq_ignore_ascii_case("system") {
+        "system"
+    } else if locale.to_ascii_lowercase().starts_with("en") {
+        "en-US"
+    } else {
+        "zh-CN"
+    }
+}
+
+fn resolve_effective_locale(locale: &str) -> &'static str {
+    let normalized = normalize_locale(locale);
+    if normalized == "system" {
+        detect_system_locale()
+    } else {
+        normalized
+    }
+}
+
+fn locale_is_en(locale: &str) -> bool {
+    resolve_effective_locale(locale) == "en-US"
+}
+
+fn menu_text_show(locale: &str) -> &'static str {
+    if locale_is_en(locale) {
+        "Show Planner"
+    } else {
+        "显示计划窗口"
+    }
+}
+
+fn menu_text_lock(locale: &str, active: bool) -> &'static str {
+    if locale_is_en(locale) {
+        if active {
+            "End Focus"
+        } else {
+            "End Focus (Not Started)"
+        }
+    } else if active {
+        "结束专注"
+    } else {
+        "结束专注 (未开始)"
+    }
+}
+
+fn menu_text_break(locale: &str, active: bool) -> &'static str {
+    if locale_is_en(locale) {
+        if active {
+            "End Break"
+        } else {
+            "End Break (Not Started)"
+        }
+    } else if active {
+        "结束休息"
+    } else {
+        "结束休息 (未开始)"
+    }
+}
+
+fn menu_text_settings(locale: &str) -> &'static str {
+    if locale_is_en(locale) {
+        "Settings"
+    } else {
+        "设置"
+    }
+}
+
+fn menu_text_quit(locale: &str) -> &'static str {
+    if locale_is_en(locale) {
+        "Quit"
+    } else {
+        "退出"
+    }
+}
+
+fn tray_title_planning(locale: &str) -> &'static str {
+    if locale_is_en(locale) {
+        "Planning"
+    } else {
+        "计划中"
+    }
+}
+
+fn tray_title_focus(locale: &str, hours: u64, mins: u64, secs: u64) -> String {
+    if locale_is_en(locale) {
+        if hours > 0 {
+            format!("Focusing {:02}:{:02}:{:02}", hours, mins, secs)
+        } else {
+            format!("Focusing {:02}:{:02}", mins, secs)
+        }
+    } else if hours > 0 {
+        format!("专注中 {:02}:{:02}:{:02}", hours, mins, secs)
+    } else {
+        format!("专注中 {:02}:{:02}", mins, secs)
+    }
+}
+
+fn tray_title_break(locale: &str, mins: u64, secs: u64) -> String {
+    if locale_is_en(locale) {
+        format!("On Break {:02}:{:02}", mins, secs)
+    } else {
+        format!("休息中 {:02}:{:02}", mins, secs)
+    }
+}
+
+fn tray_title_break_minutes(locale: &str, mins: u64) -> String {
+    if locale_is_en(locale) {
+        format!("On Break {:02}:00", mins)
+    } else {
+        format!("休息中 {:02}:00", mins)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tray Menu State — helpers to reduce repetition
 // ---------------------------------------------------------------------------
 struct TrayMenuState {
+    locale: String,
+    show_item: Option<IconMenuItem<tauri::Wry>>,
     lock_item: Option<IconMenuItem<tauri::Wry>>,
     end_break_item: Option<IconMenuItem<tauri::Wry>>,
+    settings_item: Option<IconMenuItem<tauri::Wry>>,
+    quit_item: Option<IconMenuItem<tauri::Wry>>,
 }
 
 impl TrayMenuState {
+    fn set_locale(&mut self, locale: String) {
+        self.locale = normalize_locale(&locale).to_string();
+        self.refresh_static_labels();
+    }
+
+    fn refresh_static_labels(&self) {
+        if let Some(item) = &self.show_item {
+            let _ = item.set_text(menu_text_show(&self.locale));
+        }
+        if let Some(item) = &self.settings_item {
+            let _ = item.set_text(menu_text_settings(&self.locale));
+        }
+        if let Some(item) = &self.quit_item {
+            let _ = item.set_text(menu_text_quit(&self.locale));
+        }
+    }
+
     fn set_focus_active(&self) {
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(true);
-            let _ = item.set_text("结束专注");
+            let _ = item.set_text(menu_text_lock(&self.locale, true));
         }
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text("结束休息 (未开始)");
+            let _ = item.set_text(menu_text_break(&self.locale, false));
         }
     }
 
     fn set_focus_inactive(&self) {
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text("结束专注 (未开始)");
+            let _ = item.set_text(menu_text_lock(&self.locale, false));
         }
     }
 
     fn set_break_active(&self) {
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(true);
-            let _ = item.set_text("结束休息");
+            let _ = item.set_text(menu_text_break(&self.locale, true));
         }
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text("结束专注 (未开始)");
+            let _ = item.set_text(menu_text_lock(&self.locale, false));
         }
     }
 
     fn set_break_inactive(&self) {
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text("结束休息 (未开始)");
+            let _ = item.set_text(menu_text_break(&self.locale, false));
         }
     }
 }
@@ -253,7 +400,50 @@ fn update_settings(
         s.default_whitelist = wl.clone();
         storage::save_settings(&storage::UserSettings {
             default_whitelist: wl,
+            locale: s.locale.clone(),
         });
+    }
+}
+
+#[tauri::command]
+fn set_locale(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Mutex<AppState>>,
+    tray_state: tauri::State<'_, Mutex<TrayMenuState>>,
+    locale: String,
+) {
+    let normalized = normalize_locale(&locale).to_string();
+
+    let (has_focus_session, has_break_session, default_whitelist) = {
+        let mut s = state.lock().unwrap();
+        s.locale = normalized.clone();
+        let _ = app.emit("state-changed", s.clone());
+        (
+            s.focus_started_at.is_some(),
+            s.free_activity_end_at.is_some(),
+            s.default_whitelist.clone(),
+        )
+    };
+
+    storage::save_settings(&storage::UserSettings {
+        default_whitelist,
+        locale: normalized.clone(),
+    });
+
+    if let Ok(mut ts) = tray_state.lock() {
+        ts.set_locale(normalized.clone());
+        if has_break_session {
+            ts.set_break_active();
+        } else if has_focus_session {
+            ts.set_focus_active();
+        } else {
+            ts.set_focus_inactive();
+            ts.set_break_inactive();
+        }
+    }
+
+    if let Some(tray) = app.tray_by_id("focus-tray") {
+        let _ = tray.set_title(Some(tray_title_planning(&normalized)));
     }
 }
 
@@ -308,7 +498,11 @@ fn start_free_activity(
     }
 
     if let Some(tray) = app.tray_by_id("focus-tray") {
-        let _ = tray.set_title(Some(&format!("休息中 {:02}:00", duration_minutes)));
+        let locale = {
+            let s = state.lock().unwrap();
+            s.locale.clone()
+        };
+        let _ = tray.set_title(Some(&tray_title_break_minutes(&locale, duration_minutes)));
     }
 }
 
@@ -329,11 +523,16 @@ pub fn run() {
             if !settings.default_whitelist.is_empty() {
                 state.default_whitelist = settings.default_whitelist;
             }
+            state.locale = normalize_locale(&settings.locale).to_string();
             state
         }))
         .manage(Mutex::new(TrayMenuState {
+            locale: "system".to_string(),
+            show_item: None,
             lock_item: None,
             end_break_item: None,
+            settings_item: None,
+            quit_item: None,
         }))
         .invoke_handler(tauri::generate_handler![
             get_running_apps,
@@ -344,6 +543,7 @@ pub fn run() {
             switch_to_app,
             start_free_activity,
             update_settings,
+            set_locale,
             get_history,
             get_history_page,
             get_analytics,
@@ -362,18 +562,24 @@ pub fn run() {
             }
 
             // --- System Tray ---
+            let locale = {
+                let state = app.state::<Mutex<AppState>>();
+                let s = state.lock().unwrap();
+                s.locale.clone()
+            };
+
             let show_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "show",
-                "显示计划窗口",
+                menu_text_show(&locale),
                 true,
-                Some(NativeIcon::ListView),
+                Some(NativeIcon::Home),
                 None::<&str>,
             )?;
             let lock_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "lock",
-                "结束专注 (未开始)",
+                menu_text_lock(&locale, false),
                 false,
                 Some(NativeIcon::LockLocked),
                 None::<&str>,
@@ -381,27 +587,38 @@ pub fn run() {
             let end_break_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "end_break",
-                "结束休息 (未开始)",
+                menu_text_break(&locale, false),
                 false,
-                Some(NativeIcon::StatusPartiallyAvailable),
+                Some(NativeIcon::Refresh),
                 None::<&str>,
             )?;
             let settings_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "settings",
-                "设置",
+                menu_text_settings(&locale),
                 true,
-                Some(NativeIcon::PreferencesGeneral),
+                Some(NativeIcon::RefreshFreestanding),
                 None::<&str>,
             )?;
-            let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let quit_i = IconMenuItem::with_id_and_native_icon(
+                app,
+                "quit",
+                menu_text_quit(&locale),
+                true,
+                Some(NativeIcon::StopProgressFreestanding),
+                None::<&str>,
+            )?;
 
             // Store clones for dynamic updates
             {
                 let ts = app.state::<Mutex<TrayMenuState>>();
                 if let Ok(mut s) = ts.lock() {
+                    s.locale = locale.clone();
+                    s.show_item = Some(show_i.clone());
                     s.lock_item = Some(lock_i.clone());
                     s.end_break_item = Some(end_break_i.clone());
+                    s.settings_item = Some(settings_i.clone());
+                    s.quit_item = Some(quit_i.clone());
                 };
             }
 
@@ -412,7 +629,7 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
                 .menu(&menu)
-                .title("计划中")
+                .title(tray_title_planning(&locale))
                 .tooltip("Focus Must")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
@@ -441,7 +658,12 @@ pub fn run() {
                         }
                         show_main_window(app, false);
                         if let Some(tray) = app.tray_by_id("focus-tray") {
-                            let _ = tray.set_title(Some("计划中"));
+                            let locale = {
+                                let state = app.state::<Mutex<AppState>>();
+                                let s = state.lock().unwrap();
+                                s.locale.clone()
+                            };
+                            let _ = tray.set_title(Some(tray_title_planning(&locale)));
                         }
                     }
                     "quit" => {
@@ -510,9 +732,9 @@ fn tray_title_updater(app: tauri::AppHandle) {
         thread::sleep(Duration::from_secs(1));
 
         let state = app.state::<Mutex<AppState>>();
-        let (started_at, free_end_at) = {
+        let (started_at, free_end_at, locale) = {
             let s = state.lock().unwrap();
-            (s.focus_started_at, s.free_activity_end_at)
+            (s.focus_started_at, s.free_activity_end_at, s.locale.clone())
         };
 
         let title = if let Some(start_ts) = started_at {
@@ -526,11 +748,7 @@ fn tray_title_updater(app: tauri::AppHandle) {
             let mins = (elapsed % 3600) / 60;
             let secs = elapsed % 60;
 
-            if hours > 0 {
-                format!("专注中 {:02}:{:02}:{:02}", hours, mins, secs)
-            } else {
-                format!("专注中 {:02}:{:02}", mins, secs)
-            }
+            tray_title_focus(&locale, hours, mins, secs)
         } else if let Some(end_ts) = free_end_at {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -551,15 +769,15 @@ fn tray_title_updater(app: tauri::AppHandle) {
                     let _ = app.emit("state-changed", s.clone());
                 }
                 show_main_window(&app, false);
-                "计划中".to_string()
+                tray_title_planning(&locale).to_string()
             } else {
                 let remaining = end_ts - now;
                 let mins = remaining / 60;
                 let secs = remaining % 60;
-                format!("休息中 {:02}:{:02}", mins, secs)
+                tray_title_break(&locale, mins, secs)
             }
         } else {
-            "计划中".to_string()
+            tray_title_planning(&locale).to_string()
         };
 
         if let Some(tray) = app.tray_by_id("focus-tray") {
