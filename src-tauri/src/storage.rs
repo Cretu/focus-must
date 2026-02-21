@@ -82,11 +82,16 @@ pub struct AnalyticsData {
 }
 
 fn data_dir() -> PathBuf {
-    let home = std::env::var("HOME").expect("HOME env var not set");
-    let path = Path::new(&home).join(".focusmust");
-    if !path.exists() {
-        let _ = fs::create_dir_all(&path);
+    let base = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| Path::new(".").to_path_buf());
+
+    let path = base.join(".focusmust");
+    if let Err(error) = fs::create_dir_all(&path) {
+        eprintln!("Failed to create data dir at {}: {error}", path.display());
     }
+
     path
 }
 
@@ -164,14 +169,16 @@ fn migrate_jsonl_if_needed(conn: &Connection) -> rusqlite::Result<()> {
         for record in records {
             let whitelist_json =
                 serde_json::to_string(&record.whitelist).unwrap_or_else(|_| "[]".to_string());
-            let _ = stmt.execute(params![
+            if let Err(error) = stmt.execute(params![
                 record.session_type,
                 record.started_at as i64,
                 record.ended_at as i64,
                 record.duration_secs as i64,
                 record.task,
                 whitelist_json,
-            ]);
+            ]) {
+                eprintln!("Failed to migrate a legacy session record: {error}");
+            }
         }
     }
     tx.commit()?;
@@ -182,7 +189,9 @@ fn append_session_jsonl(record: &SessionRecord) {
     let path = data_dir().join(SESSIONS_FILE);
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         if let Ok(json) = serde_json::to_string(record) {
-            let _ = writeln!(file, "{}", json);
+            if let Err(error) = writeln!(file, "{}", json) {
+                eprintln!("Failed to append session JSONL: {error}");
+            }
         }
     }
 }
@@ -205,7 +214,9 @@ pub fn load_settings() -> UserSettings {
 pub fn save_settings(settings: &UserSettings) {
     let path = data_dir().join(SETTINGS_FILE);
     if let Ok(json) = serde_json::to_string_pretty(settings) {
-        let _ = fs::write(path, json);
+        if let Err(error) = fs::write(&path, json) {
+            eprintln!("Failed to save settings at {}: {error}", path.display());
+        }
     }
 }
 

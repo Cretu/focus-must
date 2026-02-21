@@ -1,13 +1,6 @@
 import { ref, computed, watch, onUnmounted, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-
-interface AppState {
-    is_restricted: boolean
-    default_whitelist: string[]
-    session_whitelist: string[]
-    focus_started_at: number | null
-    free_activity_end_at: number | null
-}
+import type { AppState } from '../types/contracts'
 
 export function useBreakTimer(appState: Ref<AppState>) {
     const showFreeActivityOptions = ref(false)

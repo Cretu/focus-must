@@ -11,66 +11,24 @@ import {
 } from "@tauri-apps/plugin-autostart";
 import { useSnowEffect } from "./composables/useSnowEffect";
 import { useBreakTimer } from "./composables/useBreakTimer";
-import HistoryList, { type SessionRecord } from "./components/HistoryList.vue";
+import HistoryList from "./components/HistoryList.vue";
+import FocusSessionCard from "./components/FocusSessionCard.vue";
+import SettingsView from "./components/SettingsView.vue";
+import AnalyticsView from "./components/AnalyticsView.vue";
 import {
     isSupportedLocale,
     localeOptionsWithText,
     type LocaleCode,
     type PreferredLocale,
 } from "./i18n";
-
-interface AppInfo {
-    name: string;
-    bundle_id: string;
-    icon_data_url?: string | null;
-}
-
-interface BlockedAppEvent {
-    name: string;
-    bundle_id: string;
-    return_to_bundle_id?: string;
-    return_to_name?: string;
-}
-
-interface AppState {
-    is_restricted: boolean;
-    default_whitelist: string[];
-    session_whitelist: string[];
-    focus_started_at: number | null;
-    free_activity_end_at: number | null;
-    locale: PreferredLocale;
-}
-
-interface AnalyticsSummary {
-    total_focus_secs: number;
-    total_break_secs: number;
-    total_sessions: number;
-    focus_sessions: number;
-    break_sessions: number;
-}
-
-interface DailyTrendPoint {
-    day: string;
-    focus_secs: number;
-    break_secs: number;
-}
-
-interface FocusHourBucket {
-    hour: number;
-    focus_secs: number;
-    sessions: number;
-}
-
-interface AnalyticsData {
-    summary: AnalyticsSummary;
-    daily_trend: DailyTrendPoint[];
-    focus_hour_distribution: FocusHourBucket[];
-}
-
-interface HistoryPage {
-    items: SessionRecord[];
-    has_more: boolean;
-}
+import type {
+    AnalyticsData,
+    AppInfo,
+    AppState,
+    BlockedAppEvent,
+    HistoryPage,
+    SessionRecord,
+} from "./types/contracts";
 
 const HISTORY_PAGE_SIZE = 100;
 
@@ -180,7 +138,6 @@ const historyHasMore = ref(true);
 const historyLoading = ref(false);
 const analyticsData = ref<AnalyticsData | null>(null);
 const analyticsLoading = ref(false);
-const hoveredTrendIndex = ref<number | null>(null);
 
 // Composables
 const { snowEnabled, snowCanvas } = useSnowEffect();
@@ -244,193 +201,6 @@ const formattedTime = computed(() => {
     }
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 });
-
-const maxDailyFocusSecs = computed(() => {
-    const values = analyticsData.value?.daily_trend.map((point) => point.focus_secs) ?? [];
-    return Math.max(1, ...values);
-});
-
-const maxHourFocusSecs = computed(() => {
-    const values =
-        analyticsData.value?.focus_hour_distribution.map((point) => point.focus_secs) ?? [];
-    return Math.max(1, ...values);
-});
-
-const DAILY_TREND_PLOT_TOP = 8;
-const DAILY_TREND_PLOT_BOTTOM = 92;
-
-type DailyTrendChartPoint = {
-    x: number;
-    y: number;
-    day: string;
-    focusSecs: number;
-};
-
-const dailyTrendChartPoints = computed(() => {
-    const trend = analyticsData.value?.daily_trend ?? [];
-    if (trend.length === 0) {
-        return [] as DailyTrendChartPoint[];
-    }
-
-    return trend.map((point, index) => {
-        const x = trend.length === 1 ? 50 : (index / (trend.length - 1)) * 100;
-        const normalized = Math.max(
-            0,
-            Math.min(1, point.focus_secs / maxDailyFocusSecs.value),
-        );
-        const y =
-            DAILY_TREND_PLOT_TOP +
-            (1 - normalized) * (DAILY_TREND_PLOT_BOTTOM - DAILY_TREND_PLOT_TOP);
-
-        return {
-            x,
-            y,
-            day: point.day,
-            focusSecs: point.focus_secs,
-        };
-    });
-});
-
-function buildSmoothPath(points: DailyTrendChartPoint[]): string {
-    if (points.length === 0) {
-        return "";
-    }
-
-    if (points.length === 1) {
-        return `M ${points[0].x} ${points[0].y}`;
-    }
-
-    let path = `M ${points[0].x} ${points[0].y}`;
-
-    for (let index = 0; index < points.length - 1; index++) {
-        const p0 = points[index - 1] ?? points[index];
-        const p1 = points[index];
-        const p2 = points[index + 1];
-        const p3 = points[index + 2] ?? p2;
-
-        const cp1x = p1.x + (p2.x - p0.x) / 6;
-        const cp1y = p1.y + (p2.y - p0.y) / 6;
-        const cp2x = p2.x - (p3.x - p1.x) / 6;
-        const cp2y = p2.y - (p3.y - p1.y) / 6;
-
-        path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
-    }
-
-    return path;
-}
-
-const dailyTrendSmoothPath = computed(() =>
-    buildSmoothPath(dailyTrendChartPoints.value),
-);
-
-const dailyTrendAreaPath = computed(() => {
-    const points = dailyTrendChartPoints.value;
-    if (points.length === 0) {
-        return "";
-    }
-
-    const smoothLinePath = buildSmoothPath(points);
-    const first = points[0];
-    const last = points[points.length - 1];
-
-    return `${smoothLinePath} L ${last.x} ${DAILY_TREND_PLOT_BOTTOM} L ${first.x} ${DAILY_TREND_PLOT_BOTTOM} Z`;
-});
-
-const activeTrendIndex = computed(() => {
-    const points = dailyTrendChartPoints.value;
-    if (points.length === 0) {
-        return null;
-    }
-
-    if (hoveredTrendIndex.value === null) {
-        return points.length - 1;
-    }
-
-    return Math.max(0, Math.min(points.length - 1, hoveredTrendIndex.value));
-});
-
-const activeTrendPoint = computed(() => {
-    const index = activeTrendIndex.value;
-    if (index === null) {
-        return null;
-    }
-
-    return dailyTrendChartPoints.value[index] ?? null;
-});
-
-const dailyTrendLabelPoints = computed(() => {
-    const points = dailyTrendChartPoints.value;
-    if (points.length <= 6) {
-        return points;
-    }
-
-    const step = Math.ceil(points.length / 6);
-    return points.filter(
-        (_point, index) => index % step === 0 || index === points.length - 1,
-    );
-});
-
-function updateTrendHover(event: MouseEvent) {
-    const points = dailyTrendChartPoints.value;
-    const target = event.currentTarget as SVGSVGElement | null;
-
-    if (!target || points.length === 0) {
-        return;
-    }
-
-    const rect = target.getBoundingClientRect();
-    if (rect.width <= 0) {
-        return;
-    }
-
-    const ratio = (event.clientX - rect.left) / rect.width;
-    const normalizedX = Math.max(0, Math.min(100, ratio * 100));
-
-    let nearest = 0;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-
-    points.forEach((point, index) => {
-        const distance = Math.abs(point.x - normalizedX);
-        if (distance < nearestDistance) {
-            nearest = index;
-            nearestDistance = distance;
-        }
-    });
-
-    hoveredTrendIndex.value = nearest;
-}
-
-function clearTrendHover() {
-    hoveredTrendIndex.value = null;
-}
-
-function formatDurationLabel(totalSeconds: number): string {
-    const hours = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    if (hours > 0) {
-        return t("duration.hoursLabel", { hours, minutes: mins });
-    }
-    return t("duration.minutesLabel", { minutes: mins });
-}
-
-function formatDurationCompact(totalSeconds: number): string {
-    const mins = Math.floor(totalSeconds / 60);
-    if (mins >= 60) {
-        const h = Math.floor(mins / 60);
-        const m = mins % 60;
-        return t("duration.hoursCompact", {
-            hours: h,
-            minutes: m > 0 ? t("duration.minutesCompact", { minutes: m }) : "",
-        }).trim();
-    }
-    return t("duration.minutesCompact", { minutes: mins });
-}
-
-function formatHourLabel(hour: number): string {
-    const startHour = ((hour % 24) + 24) % 24;
-    const endHour = (startHour + 1) % 24;
-    return `${String(startHour).padStart(2, "0")}:00~${String(endHour).padStart(2, "0")}:00`;
-}
 
 function clearBlockedState() {
     if (countdownInterval) {
@@ -726,14 +496,6 @@ async function startFocus() {
     await invoke("unlock_session", { whitelist, task });
 }
 
-function requestEndFocus() {
-    showEndConfirm.value = true;
-}
-
-function cancelEndFocus() {
-    showEndConfirm.value = false;
-}
-
 async function confirmEndFocus() {
     showEndConfirm.value = false;
     await invoke("lock_session");
@@ -1015,402 +777,37 @@ function loadMoreHistory() {
             </div>
         </UCard>
 
-        <UCard v-else-if="!isFocusing && currentView === 'settings'" class="w-[min(980px,92vw)] max-h-[88vh] overflow-hidden">
-            <template #header>
-                <div class="space-y-1">
-                    <div class="flex min-w-0 items-center gap-2">
-                        <UIcon name="i-lucide-settings" class="text-3xl text-primary" />
-                        <h1 class="text-xl font-semibold leading-tight">{{ t("app.settingsTitle") }}</h1>
-                    </div>
-                </div>
-            </template>
+        <SettingsView
+            v-else-if="!isFocusing && currentView === 'settings'"
+            v-model:autostart-enabled="autostartEnabled"
+            v-model:settings-locale="settingsLocale"
+            :settings-apps="settingsApps"
+            :settings-whitelist="settingsWhitelist"
+            :autostart-loading="autostartLoading"
+            :locale-options-with-text="localeOptionsWithText"
+            @refresh="openSettings"
+            @toggle-settings-app="toggleSettingsApp"
+            @back="currentView = 'planning'"
+            @save="saveSettings"
+        />
 
-            <div class="space-y-4 overflow-y-auto max-h-[62vh]">
-                <UCard variant="soft">
-                    <template #header>
-                        <div class="flex items-start justify-between gap-2">
-                            <div>
-                                <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
-                                    <UIcon name="i-lucide-layout-grid" class="text-base" />
-                                    <span>{{ t("app.defaultAllowedApps") }}</span>
-                                </div>
-                                <p class="text-xs text-muted">{{ t("app.defaultAllowedAppsSubtitle") }}</p>
-                            </div>
-                            <UButton color="neutral" variant="outline" size="xs" @click="openSettings">
-                                {{ t("app.refresh") }}
-                            </UButton>
-                        </div>
-                    </template>
-
-                    <div class="app-grid">
-                        <UCard
-                            v-for="app in settingsApps"
-                            :key="app.bundle_id"
-                            variant="outline"
-                            :class="['app-item', { selected: settingsWhitelist.has(app.bundle_id) }]"
-                            @click="toggleSettingsApp(app.bundle_id)"
-                        >
-                            <div class="app-item-icon-placeholder" :class="{ 'has-image': !!app.icon_data_url }">
-                                <img
-                                    v-if="app.icon_data_url"
-                                    :src="app.icon_data_url"
-                                    :alt="app.name"
-                                    class="app-item-icon-image"
-                                />
-                                <span v-else>{{ app.name ? app.name[0].toUpperCase() : "?" }}</span>
-                            </div>
-                            <div :class="appNameClass(app.name)">{{ app.name }}</div>
-                        </UCard>
-
-                        <UAlert
-                            v-if="settingsApps.length === 0"
-                            color="neutral"
-                            variant="soft"
-                            :title="t('app.noRunningApps')"
-                            class="col-span-full"
-                        />
-                    </div>
-                </UCard>
-
-                <UCard variant="soft">
-                    <div class="flex items-center justify-between gap-3">
-                        <div>
-                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
-                                <UIcon name="i-lucide-power" class="text-base" />
-                                <span>{{ t("app.autostart") }}</span>
-                            </p>
-                            <p class="text-xs text-muted">{{ t("app.autostartSubtitle") }}</p>
-                        </div>
-                        <USwitch v-model="autostartEnabled" :disabled="autostartLoading" />
-                    </div>
-                </UCard>
-
-                <UCard variant="soft">
-                    <div class="space-y-3">
-                        <div class="flex items-center justify-between gap-3">
-                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
-                                <UIcon name="i-lucide-languages" class="text-base" />
-                                <span>{{ t("app.defaultLanguage") }}</span>
-                            </p>
-                            <USelect
-                                v-model="settingsLocale"
-                                :items="localeOptionsWithText"
-                                value-key="value"
-                                label-key="label"
-                                size="sm"
-                                class="w-32"
-                            />
-                        </div>
-
-                        <div class="flex items-center justify-between gap-3">
-                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
-                                <UIcon name="i-lucide-sun-moon" class="text-base" />
-                                <span>{{ t("app.defaultAppearance") }}</span>
-                            </p>
-                            <UColorModeSelect size="sm" class="w-28" />
-                        </div>
-                    </div>
-                </UCard>
-            </div>
-
-            <template #footer>
-                <div class="flex gap-2">
-                    <UButton
-                        color="neutral"
-                        variant="outline"
-                        class="flex-1 justify-center text-center"
-                        @click="currentView = 'planning'"
-                    >
-                        <UIcon name="i-lucide-arrow-left" class="text-base" />
-                        {{ t("app.back") }}
-                    </UButton>
-                    <UButton
-                        color="success"
-                        variant="solid"
-                        class="flex-1 justify-center text-center"
-                        @click="saveSettings"
-                    >
-                        <UIcon name="i-lucide-save" class="text-base" />
-                        {{ t("app.saveSettings") }}
-                    </UButton>
-                </div>
-            </template>
-        </UCard>
-
-        <UCard
+        <AnalyticsView
             v-else-if="!isFocusing && currentView === 'analytics'"
-            class="flex h-[86vh] w-[min(1080px,94vw)] flex-col overflow-hidden"
-            :ui="{ body: 'flex-1 min-h-0 overflow-hidden' }"
-        >
-            <template #header>
-                <div class="space-y-1">
-                    <div class="flex min-w-0 items-center gap-2">
-                        <UIcon name="i-lucide-chart-column" class="text-3xl text-primary" />
-                        <h1 class="text-xl font-semibold leading-tight">{{ t("app.analyticsTitle") }}</h1>
-                    </div>
-                    <p class="text-sm text-muted">{{ t("app.analyticsSubtitle") }}</p>
-                </div>
-            </template>
+            :analytics-loading="analyticsLoading"
+            :analytics-data="analyticsData"
+            @back="currentView = 'planning'"
+        />
 
-            <div class="h-full min-h-0 space-y-3">
-                <UAlert
-                    v-if="analyticsLoading"
-                    color="neutral"
-                    variant="soft"
-                    :title="t('app.analyticsLoading')"
-                />
-
-                <template v-else-if="analyticsData">
-                    <div class="grid gap-2.5 sm:grid-cols-3">
-                        <UCard variant="soft">
-                            <div class="analytics-metric-card">
-                                <div class="analytics-metric-main">
-                                    <UIcon name="i-lucide-timer" class="analytics-metric-icon" />
-                                    <div class="analytics-metric-value-group">
-                                        <p class="analytics-metric-label">{{ t("app.totalFocusDuration") }}</p>
-                                        <p class="analytics-metric-value">
-                                            {{ formatDurationLabel(analyticsData.summary.total_focus_secs) }}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </UCard>
-                        <UCard variant="soft">
-                            <div class="analytics-metric-card">
-                                <div class="analytics-metric-main">
-                                    <UIcon name="i-lucide-coffee" class="analytics-metric-icon" />
-                                    <div class="analytics-metric-value-group">
-                                        <p class="analytics-metric-label">{{ t("app.totalBreakDuration") }}</p>
-                                        <p class="analytics-metric-value">
-                                            {{ formatDurationLabel(analyticsData.summary.total_break_secs) }}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </UCard>
-                        <UCard variant="soft">
-                            <div class="analytics-metric-card">
-                                <div class="analytics-metric-main">
-                                    <UIcon name="i-lucide-list" class="analytics-metric-icon" />
-                                    <div class="analytics-metric-value-group">
-                                        <p class="analytics-metric-label">{{ t("app.totalSessions") }}</p>
-                                        <p class="analytics-metric-value">
-                                            {{ analyticsData.summary.total_sessions }}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </UCard>
-                    </div>
-
-                    <UCard variant="soft">
-                        <template #header>
-                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
-                                <UIcon name="i-lucide-chart-line" class="text-base" />
-                                <span>{{ t("app.dailyTrend") }}</span>
-                            </p>
-                        </template>
-                        <div v-if="dailyTrendChartPoints.length > 0" class="space-y-3">
-                            <div class="daily-trend-chart-wrap">
-                                <svg
-                                    class="daily-trend-chart"
-                                    viewBox="0 0 100 100"
-                                    preserveAspectRatio="none"
-                                    role="img"
-                                    :aria-label="t('app.dailyTrendAria')"
-                                    @mousemove="updateTrendHover"
-                                    @mouseleave="clearTrendHover"
-                                >
-                                    <defs>
-                                        <linearGradient id="dailyTrendArea" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stop-color="rgb(34 197 94 / 0.35)" />
-                                            <stop offset="100%" stop-color="rgb(34 197 94 / 0.04)" />
-                                        </linearGradient>
-                                    </defs>
-                                    <line
-                                        v-for="point in dailyTrendChartPoints"
-                                        :key="`grid-${point.day}`"
-                                        :x1="point.x"
-                                        :y1="DAILY_TREND_PLOT_TOP"
-                                        :x2="point.x"
-                                        :y2="DAILY_TREND_PLOT_BOTTOM"
-                                        class="daily-trend-grid-line"
-                                    />
-                                    <path :d="dailyTrendAreaPath" fill="url(#dailyTrendArea)" />
-                                    <path
-                                        :d="dailyTrendSmoothPath"
-                                        fill="none"
-                                        stroke="rgb(34 197 94)"
-                                        stroke-width="0.35"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    />
-                                    <line
-                                        v-if="activeTrendPoint"
-                                        :x1="activeTrendPoint.x"
-                                        :y1="DAILY_TREND_PLOT_TOP"
-                                        :x2="activeTrendPoint.x"
-                                        :y2="DAILY_TREND_PLOT_BOTTOM"
-                                        class="daily-trend-focus-line"
-                                    />
-                                </svg>
-
-                                <div
-                                    v-if="activeTrendPoint"
-                                    class="daily-trend-dot"
-                                    :style="{ left: `${activeTrendPoint.x}%`, top: `${activeTrendPoint.y}%` }"
-                                ></div>
-
-                                <div
-                                    v-if="activeTrendPoint"
-                                    class="daily-trend-tooltip"
-                                    :style="{ left: `${activeTrendPoint.x}%` }"
-                                >
-                                    <p class="daily-trend-tooltip-date">{{ activeTrendPoint.day }}</p>
-                                    <p class="daily-trend-tooltip-value">
-                                        {{ formatDurationCompact(activeTrendPoint.focusSecs) }}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div class="flex items-center justify-between gap-2">
-                                <div
-                                    v-for="point in dailyTrendLabelPoints"
-                                    :key="`label-${point.day}`"
-                                    class="min-w-0 text-center"
-                                >
-                                    <p class="text-[10px] text-muted">{{ point.day.slice(5) }}</p>
-                                    <p class="text-[10px] font-medium">{{ formatDurationCompact(point.focusSecs) }}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div v-else class="py-6 text-center text-xs text-muted">
-                            {{ t("app.noTrendData") }}
-                        </div>
-                    </UCard>
-
-                    <UCard variant="soft">
-                        <template #header>
-                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
-                                <UIcon name="i-lucide-clock-3" class="text-base" />
-                                <span>{{ t("app.focusHourDistribution") }}</span>
-                            </p>
-                        </template>
-                        <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
-                            <div
-                                v-for="bucket in analyticsData.focus_hour_distribution"
-                                :key="bucket.hour"
-                                class="grid grid-cols-[100px_1fr_64px] items-center gap-1"
-                            >
-                                <span class="hour-range-chip">{{ formatHourLabel(bucket.hour) }}</span>
-                                <UProgress :model-value="bucket.focus_secs" :max="maxHourFocusSecs" size="xs" />
-                                <span class="text-[11px] text-right text-muted whitespace-nowrap tabular-nums">{{ formatDurationCompact(bucket.focus_secs) }}</span>
-                            </div>
-                        </div>
-                    </UCard>
-                </template>
-            </div>
-
-            <template #footer>
-                <div class="flex justify-end">
-                    <UButton
-                        color="neutral"
-                        variant="outline"
-                        leading-icon="i-lucide-arrow-left"
-                        @click="currentView = 'planning'"
-                    >
-                        {{ t("app.back") }}
-                    </UButton>
-                </div>
-            </template>
-        </UCard>
-
-        <UCard v-else-if="isFocusing" class="w-[min(760px,90vw)] text-center">
-            <div v-if="blockedAppState" class="space-y-4">
-                <UIcon name="i-lucide-circle-x" class="mx-auto block text-6xl text-error" />
-                <UAlert color="error" variant="soft" :title="t('app.blockedDetected')">
-                    <template #description>
-                        {{ t("app.openedApp", { name: blockedAppState.name }) }}
-                    </template>
-                </UAlert>
-
-                <template v-if="blockedAppState.return_to_bundle_id">
-                    <UBadge color="error" variant="soft" class="px-4 py-2 text-base">
-                        {{ t("app.returnInSeconds", { seconds: returnCountdown }) }}
-                    </UBadge>
-                    <UAlert color="neutral" variant="outline">
-                        <template #description>
-                            {{ t("app.returningTo", { name: blockedAppState.return_to_name }) }}
-                        </template>
-                    </UAlert>
-                </template>
-
-                <UAlert v-else color="warning" variant="soft">
-                    <template #description>
-                        <span class="inline-flex items-center gap-1.5">
-                            <UIcon name="i-lucide-triangle-alert" class="text-base" />
-                            <span>{{ t("app.manualSwitchHint") }}</span>
-                        </span>
-                    </template>
-                </UAlert>
-            </div>
-
-            <div v-else class="space-y-5">
-                <UIcon name="i-lucide-brain" class="mx-auto block text-6xl text-primary" />
-                <h1 class="text-2xl font-semibold">{{ t("app.keepFocus") }}</h1>
-
-                <div class="timer-display">{{ formattedTime }}</div>
-
-                <UAlert color="neutral" variant="soft">
-                    <template #description>
-                        {{ taskDescription || t("app.focusTaskFallback") }}
-                    </template>
-                </UAlert>
-
-                <div v-if="allowedAppNames.length > 0" class="flex flex-wrap justify-center gap-2">
-                    <UBadge
-                        v-for="app in allowedAppNames"
-                        :key="app.bundle_id"
-                        color="success"
-                        variant="soft"
-                        :label="app.name"
-                    />
-                </div>
-
-                <UAlert color="neutral" variant="outline">
-                    <template #description>
-                        {{ t("app.focusHint") }}
-                    </template>
-                </UAlert>
-
-                <div class="flex justify-center">
-                    <UButton
-                        color="neutral"
-                        variant="outline"
-                        leading-icon="i-lucide-square"
-                        @click="requestEndFocus"
-                    >
-                        {{ t("app.endFocus") }}
-                    </UButton>
-                </div>
-            </div>
-
-            <UModal
-                v-model:open="showEndConfirm"
-                :title="t('app.confirmEndTitle')"
-                :description="t('app.confirmEndDescription')"
-            >
-                <template #footer>
-                    <div class="flex w-full justify-end gap-2">
-                        <UButton color="neutral" variant="outline" @click="cancelEndFocus">
-                            {{ t("app.cancel") }}
-                        </UButton>
-                        <UButton color="primary" @click="confirmEndFocus">{{ t("app.confirmEnd") }}</UButton>
-                    </div>
-                </template>
-            </UModal>
-        </UCard>
+        <FocusSessionCard
+            v-else-if="isFocusing"
+            v-model:show-end-confirm="showEndConfirm"
+            :blocked-app-state="blockedAppState"
+            :return-countdown="returnCountdown"
+            :formatted-time="formattedTime"
+            :task-description="taskDescription"
+            :allowed-app-names="allowedAppNames"
+            @confirm-end="confirmEndFocus"
+        />
     </div>
     </UApp>
 </template>
@@ -1461,136 +858,6 @@ function loadMoreHistory() {
 
 .shake {
     animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-}
-
-.timer-display {
-    font-size: 56px;
-    font-weight: 700;
-    font-feature-settings: "tnum";
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 2px;
-}
-
-.analytics-metric-card {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    min-height: 74px;
-}
-
-.analytics-metric-label {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.1;
-    color: color-mix(in oklab, currentColor 60%, transparent);
-}
-
-.analytics-metric-main {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-}
-
-.analytics-metric-value-group {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 5px;
-}
-
-.analytics-metric-value {
-    margin: 0;
-    font-size: 21px;
-    font-weight: 700;
-    line-height: 1;
-}
-
-.analytics-metric-icon {
-    font-size: 40px;
-    line-height: 1;
-    color: rgb(34 197 94);
-}
-
-.hour-range-chip {
-    display: inline-flex;
-    width: 100%;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    background: color-mix(in oklab, rgb(34 197 94) 14%, transparent);
-    padding: 2px 6px;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.2;
-    color: color-mix(in oklab, rgb(34 197 94) 72%, currentColor);
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-}
-
-.daily-trend-chart-wrap {
-    position: relative;
-    height: 136px;
-    width: 100%;
-    border-radius: 12px;
-    padding: 10px;
-    border: 1px solid rgba(148, 163, 184, 0.2);
-    background: rgba(148, 163, 184, 0.06);
-}
-
-.daily-trend-chart {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
-.daily-trend-grid-line {
-    stroke: rgba(148, 163, 184, 0.2);
-    stroke-width: 0.35;
-}
-
-.daily-trend-focus-line {
-    stroke: rgba(16, 185, 129, 0.7);
-    stroke-width: 0.45;
-    stroke-dasharray: 1.4 1.4;
-}
-
-.daily-trend-dot {
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: rgb(16 185 129);
-    border: 2px solid rgb(255 255 255 / 0.92);
-    transform: translate(-50%, -50%);
-    box-shadow: 0 0 0 1px rgb(16 185 129 / 0.2);
-    pointer-events: none;
-}
-
-.daily-trend-tooltip {
-    position: absolute;
-    top: 8px;
-    transform: translateX(-50%);
-    border-radius: 10px;
-    border: 1px solid rgba(148, 163, 184, 0.28);
-    background: rgba(15, 23, 42, 0.86);
-    padding: 6px 8px;
-    pointer-events: none;
-    min-width: 82px;
-}
-
-.daily-trend-tooltip-date {
-    font-size: 10px;
-    color: rgba(226, 232, 240, 0.82);
-    line-height: 1.1;
-}
-
-.daily-trend-tooltip-value {
-    margin-top: 2px;
-    font-size: 11px;
-    font-weight: 600;
-    color: rgba(240, 253, 244, 0.96);
-    line-height: 1.1;
 }
 
 

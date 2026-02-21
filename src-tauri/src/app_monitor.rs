@@ -3,6 +3,16 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 
+fn lock_mutex<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Recovering from poisoned mutex in app_monitor");
+            poisoned.into_inner()
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 static ICON_CACHE: std::sync::OnceLock<Mutex<HashMap<String, Option<String>>>> =
     std::sync::OnceLock::new();
@@ -93,7 +103,7 @@ fn get_running_apps_macos(include_icons: bool) -> Vec<AppInfo> {
             if !bundle_id.is_empty() {
                 let icon_data_url = if include_icons {
                     let cached = {
-                        let cache = icon_cache().lock().unwrap();
+                        let cache = lock_mutex(icon_cache());
                         cache.get(&bundle_id).cloned()
                     };
 
@@ -101,7 +111,7 @@ fn get_running_apps_macos(include_icons: bool) -> Vec<AppInfo> {
                         cached
                     } else {
                         let generated = app_icon_data_url(&app);
-                        let mut cache = icon_cache().lock().unwrap();
+                        let mut cache = lock_mutex(icon_cache());
                         cache.insert(bundle_id.clone(), generated.clone());
                         generated
                     }
@@ -138,7 +148,7 @@ fn get_app_icon_macos(bundle_id: &str) -> Option<String> {
     use objc2_app_kit::NSWorkspace;
 
     let cached = {
-        let cache = icon_cache().lock().unwrap();
+        let cache = lock_mutex(icon_cache());
         cache.get(bundle_id).cloned()
     };
     if let Some(cached) = cached {
@@ -165,7 +175,7 @@ fn get_app_icon_macos(bundle_id: &str) -> Option<String> {
         None
     });
 
-    let mut cache = icon_cache().lock().unwrap();
+    let mut cache = lock_mutex(icon_cache());
     cache.insert(bundle_id.to_string(), generated.clone());
 
     generated
@@ -216,7 +226,7 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                     .unwrap_or_default();
 
                 let state = app.state::<Mutex<AppState>>();
-                let s = state.lock().unwrap();
+                let s = lock_mutex(&state);
                 let allowed = s.is_app_allowed(&bundle_id);
                 let is_restricted = s.is_restricted;
                 let is_free_activity = s.free_activity_end_at.is_some();

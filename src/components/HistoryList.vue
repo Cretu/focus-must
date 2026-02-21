@@ -1,15 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-
-export interface SessionRecord {
-  session_type: string
-  started_at: number
-  ended_at: number
-  duration_secs: number
-  task?: string
-  whitelist: string[]
-}
+import type { SessionRecord } from '../types/contracts'
 
 const props = withDefaults(
   defineProps<{

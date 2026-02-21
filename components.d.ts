@@ -11,9 +11,13 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AnalyticsView: typeof import('./src/components/AnalyticsView.vue')['default']
+    BlockedAppPanel: typeof import('./src/components/BlockedAppPanel.vue')['default']
+    FocusSessionCard: typeof import('./src/components/FocusSessionCard.vue')['default']
     HistoryList: typeof import('./src/components/HistoryList.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SettingsView: typeof import('./src/components/SettingsView.vue')['default']
     UAlert: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Alert.vue')['default']
     UApp: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/App.vue')['default']
     UBadge: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Badge.vue')['default']

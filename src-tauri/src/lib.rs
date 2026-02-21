@@ -10,6 +10,22 @@ use tauri::{
 mod app_monitor;
 mod storage;
 
+fn lock_mutex<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Recovering from poisoned mutex");
+            poisoned.into_inner()
+        }
+    }
+}
+
+fn unix_now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppInfo {
     pub name: String,
@@ -269,14 +285,11 @@ fn show_main_window(app: &tauri::AppHandle, always_on_top: bool) {
 fn do_lock_session(app: &tauri::AppHandle) {
     {
         let state = app.state::<Mutex<AppState>>();
-        let mut s = state.lock().unwrap();
+        let mut s = lock_mutex(&state);
 
         // Log session if it was a focus session
         if let Some(start) = s.focus_started_at {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
+            let now = unix_now_secs();
             let duration = now.saturating_sub(start);
 
             // Only log significant sessions (> 10s for testing)
@@ -309,10 +322,7 @@ fn do_lock_session(app: &tauri::AppHandle) {
 
 fn log_break_session(s: &mut AppState) {
     if let (Some(start), Some(_)) = (s.free_activity_started_at, s.free_activity_end_at) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let now = unix_now_secs();
         let duration = now.saturating_sub(start);
 
         if duration >= 10 {
@@ -346,7 +356,7 @@ fn get_app_icon(bundle_id: String) -> Option<String> {
 
 #[tauri::command]
 fn get_state(state: tauri::State<'_, Mutex<AppState>>) -> AppState {
-    state.lock().unwrap().clone()
+    lock_mutex(&state).clone()
 }
 
 /// Start focus session — hide window, enable tray "End Focus"
@@ -359,18 +369,13 @@ fn unlock_session(
     task: String,
 ) {
     {
-        let mut s = state.lock().unwrap();
+        let mut s = lock_mutex(&state);
         // Log previous break if exists
         log_break_session(&mut s);
 
         s.session_whitelist = whitelist;
         s.task_description = Some(task);
-        s.focus_started_at = Some(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        );
+        s.focus_started_at = Some(unix_now_secs());
         s.free_activity_end_at = None;
         let _ = app.emit("state-changed", s.clone());
     }
@@ -395,7 +400,7 @@ fn update_settings(
     state: tauri::State<'_, Mutex<AppState>>,
     default_whitelist: Option<Vec<String>>,
 ) {
-    let mut s = state.lock().unwrap();
+    let mut s = lock_mutex(&state);
     if let Some(wl) = default_whitelist {
         s.default_whitelist = wl.clone();
         storage::save_settings(&storage::UserSettings {
@@ -415,7 +420,7 @@ fn set_locale(
     let normalized = normalize_locale(&locale).to_string();
 
     let (has_focus_session, has_break_session, default_whitelist) = {
-        let mut s = state.lock().unwrap();
+        let mut s = lock_mutex(&state);
         s.locale = normalized.clone();
         let _ = app.emit("state-changed", s.clone());
         (
@@ -478,11 +483,8 @@ fn start_free_activity(
     duration_minutes: u64,
 ) {
     {
-        let mut s = state.lock().unwrap();
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let mut s = lock_mutex(&state);
+        let now = unix_now_secs();
         s.free_activity_started_at = Some(now);
         s.free_activity_end_at = Some(now + duration_minutes * 60);
         s.focus_started_at = None;
@@ -499,7 +501,7 @@ fn start_free_activity(
 
     if let Some(tray) = app.tray_by_id("focus-tray") {
         let locale = {
-            let s = state.lock().unwrap();
+            let s = lock_mutex(&state);
             s.locale.clone()
         };
         let _ = tray.set_title(Some(&tray_title_break_minutes(&locale, duration_minutes)));
@@ -564,7 +566,7 @@ pub fn run() {
             // --- System Tray ---
             let locale = {
                 let state = app.state::<Mutex<AppState>>();
-                let s = state.lock().unwrap();
+                let s = lock_mutex(&state);
                 s.locale.clone()
             };
 
@@ -625,8 +627,16 @@ pub fn run() {
             let menu =
                 Menu::with_items(app, &[&show_i, &lock_i, &end_break_i, &settings_i, &quit_i])?;
 
-            let _tray = TrayIconBuilder::with_id("focus-tray")
-                .icon(app.default_window_icon().unwrap().clone())
+            let mut tray_builder = TrayIconBuilder::with_id("focus-tray");
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            } else {
+                eprintln!(
+                    "Default window icon is missing; tray icon will rely on platform defaults"
+                );
+            }
+
+            let _tray = tray_builder
                 .icon_as_template(true)
                 .menu(&menu)
                 .title(tray_title_planning(&locale))
@@ -646,7 +656,7 @@ pub fn run() {
                     "end_break" => {
                         {
                             let state = app.state::<Mutex<AppState>>();
-                            let mut s = state.lock().unwrap();
+                            let mut s = lock_mutex(&state);
                             log_break_session(&mut s);
                             let _ = app.emit("state-changed", s.clone());
                         }
@@ -660,7 +670,7 @@ pub fn run() {
                         if let Some(tray) = app.tray_by_id("focus-tray") {
                             let locale = {
                                 let state = app.state::<Mutex<AppState>>();
-                                let s = state.lock().unwrap();
+                                let s = lock_mutex(&state);
                                 s.locale.clone()
                             };
                             let _ = tray.set_title(Some(tray_title_planning(&locale)));
@@ -718,7 +728,9 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|error| {
+            eprintln!("error while running tauri application: {error}");
+        });
 }
 
 // ---------------------------------------------------------------------------
@@ -733,15 +745,12 @@ fn tray_title_updater(app: tauri::AppHandle) {
 
         let state = app.state::<Mutex<AppState>>();
         let (started_at, free_end_at, locale) = {
-            let s = state.lock().unwrap();
+            let s = lock_mutex(&state);
             (s.focus_started_at, s.free_activity_end_at, s.locale.clone())
         };
 
         let title = if let Some(start_ts) = started_at {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
+            let now = unix_now_secs();
             let elapsed = now.saturating_sub(start_ts);
 
             let hours = elapsed / 3600;
@@ -750,10 +759,7 @@ fn tray_title_updater(app: tauri::AppHandle) {
 
             tray_title_focus(&locale, hours, mins, secs)
         } else if let Some(end_ts) = free_end_at {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
+            let now = unix_now_secs();
 
             if now >= end_ts {
                 // Break over — disable menu item, reset state, show window
@@ -764,7 +770,7 @@ fn tray_title_updater(app: tauri::AppHandle) {
                     };
                 }
                 {
-                    let mut s = state.lock().unwrap();
+                    let mut s = lock_mutex(&state);
                     log_break_session(&mut s);
                     let _ = app.emit("state-changed", s.clone());
                 }
