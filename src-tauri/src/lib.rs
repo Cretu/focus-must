@@ -10,7 +10,7 @@ use tauri::{
 mod app_monitor;
 mod storage;
 
-fn lock_mutex<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+pub fn lock_mutex<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     match mutex.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
@@ -45,15 +45,17 @@ pub struct AppState {
     pub locale: String,
 }
 
+pub const DEFAULT_WHITELIST: &[&str] = &[
+    "com.apple.finder",
+    "com.apple.systempreferences",
+    "com.focus-must",
+];
+
 impl Default for AppState {
     fn default() -> Self {
         Self {
             is_restricted: true,
-            default_whitelist: vec![
-                "com.apple.finder".to_string(),
-                "com.apple.systempreferences".to_string(),
-                "com.focus-must".to_string(),
-            ],
+            default_whitelist: DEFAULT_WHITELIST.iter().map(|s| s.to_string()).collect(),
             session_whitelist: vec![],
             task_description: None,
             focus_started_at: None,
@@ -111,94 +113,73 @@ fn locale_is_en(locale: &str) -> bool {
     resolve_effective_locale(locale) == "en-US"
 }
 
-fn menu_text_show(locale: &str) -> &'static str {
-    if locale_is_en(locale) {
-        "Show Planner"
-    } else {
-        "显示计划窗口"
-    }
+// ---------------------------------------------------------------------------
+// Tray i18n — struct-based approach
+// ---------------------------------------------------------------------------
+struct TrayLocale {
+    show: &'static str,
+    lock_active: &'static str,
+    lock_inactive: &'static str,
+    break_active: &'static str,
+    break_inactive: &'static str,
+    settings: &'static str,
+    quit: &'static str,
+    planning: &'static str,
+    focus_prefix: &'static str,
+    break_prefix: &'static str,
 }
 
-fn menu_text_lock(locale: &str, active: bool) -> &'static str {
-    if locale_is_en(locale) {
-        if active {
-            "End Focus"
-        } else {
-            "End Focus (Not Started)"
-        }
-    } else if active {
-        "结束专注"
-    } else {
-        "结束专注 (未开始)"
-    }
-}
+const TRAY_LOCALE_EN: TrayLocale = TrayLocale {
+    show: "Show Planner",
+    lock_active: "End Focus",
+    lock_inactive: "End Focus (Not Started)",
+    break_active: "End Break",
+    break_inactive: "End Break (Not Started)",
+    settings: "Settings",
+    quit: "Quit",
+    planning: "Planning",
+    focus_prefix: "Focusing",
+    break_prefix: "On Break",
+};
 
-fn menu_text_break(locale: &str, active: bool) -> &'static str {
-    if locale_is_en(locale) {
-        if active {
-            "End Break"
-        } else {
-            "End Break (Not Started)"
-        }
-    } else if active {
-        "结束休息"
-    } else {
-        "结束休息 (未开始)"
-    }
-}
+const TRAY_LOCALE_ZH: TrayLocale = TrayLocale {
+    show: "显示计划窗口",
+    lock_active: "结束专注",
+    lock_inactive: "结束专注 (未开始)",
+    break_active: "结束休息",
+    break_inactive: "结束休息 (未开始)",
+    settings: "设置",
+    quit: "退出",
+    planning: "计划中",
+    focus_prefix: "专注中",
+    break_prefix: "休息中",
+};
 
-fn menu_text_settings(locale: &str) -> &'static str {
+fn tray_locale(locale: &str) -> &'static TrayLocale {
     if locale_is_en(locale) {
-        "Settings"
+        &TRAY_LOCALE_EN
     } else {
-        "设置"
-    }
-}
-
-fn menu_text_quit(locale: &str) -> &'static str {
-    if locale_is_en(locale) {
-        "Quit"
-    } else {
-        "退出"
-    }
-}
-
-fn tray_title_planning(locale: &str) -> &'static str {
-    if locale_is_en(locale) {
-        "Planning"
-    } else {
-        "计划中"
+        &TRAY_LOCALE_ZH
     }
 }
 
 fn tray_title_focus(locale: &str, hours: u64, mins: u64, secs: u64) -> String {
-    if locale_is_en(locale) {
-        if hours > 0 {
-            format!("Focusing {:02}:{:02}:{:02}", hours, mins, secs)
-        } else {
-            format!("Focusing {:02}:{:02}", mins, secs)
-        }
-    } else if hours > 0 {
-        format!("专注中 {:02}:{:02}:{:02}", hours, mins, secs)
+    let tl = tray_locale(locale);
+    if hours > 0 {
+        format!("{} {:02}:{:02}:{:02}", tl.focus_prefix, hours, mins, secs)
     } else {
-        format!("专注中 {:02}:{:02}", mins, secs)
+        format!("{} {:02}:{:02}", tl.focus_prefix, mins, secs)
     }
 }
 
 fn tray_title_break(locale: &str, mins: u64, secs: u64) -> String {
-    if locale_is_en(locale) {
-        format!("On Break {:02}:{:02}", mins, secs)
-    } else {
-        format!("休息中 {:02}:{:02}", mins, secs)
-    }
+    let tl = tray_locale(locale);
+    format!("{} {:02}:{:02}", tl.break_prefix, mins, secs)
 }
 
 fn tray_title_break_minutes(locale: &str, mins: u64) -> String {
-    if locale_is_en(locale) {
-        format!("On Break {:02}:00", mins)
-    } else {
-        format!("休息中 {:02}:00", mins)
-    }
+    let tl = tray_locale(locale);
+    format!("{} {:02}:00", tl.break_prefix, mins)
 }
 
 // ---------------------------------------------------------------------------
@@ -221,49 +202,49 @@ impl TrayMenuState {
 
     fn refresh_static_labels(&self) {
         if let Some(item) = &self.show_item {
-            let _ = item.set_text(menu_text_show(&self.locale));
+            let _ = item.set_text(tray_locale(&self.locale).show);
         }
         if let Some(item) = &self.settings_item {
-            let _ = item.set_text(menu_text_settings(&self.locale));
+            let _ = item.set_text(tray_locale(&self.locale).settings);
         }
         if let Some(item) = &self.quit_item {
-            let _ = item.set_text(menu_text_quit(&self.locale));
+            let _ = item.set_text(tray_locale(&self.locale).quit);
         }
     }
 
     fn set_focus_active(&self) {
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(true);
-            let _ = item.set_text(menu_text_lock(&self.locale, true));
+            let _ = item.set_text(tray_locale(&self.locale).lock_active);
         }
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text(menu_text_break(&self.locale, false));
+            let _ = item.set_text(tray_locale(&self.locale).break_inactive);
         }
     }
 
     fn set_focus_inactive(&self) {
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text(menu_text_lock(&self.locale, false));
+            let _ = item.set_text(tray_locale(&self.locale).lock_inactive);
         }
     }
 
     fn set_break_active(&self) {
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(true);
-            let _ = item.set_text(menu_text_break(&self.locale, true));
+            let _ = item.set_text(tray_locale(&self.locale).break_active);
         }
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text(menu_text_lock(&self.locale, false));
+            let _ = item.set_text(tray_locale(&self.locale).lock_inactive);
         }
     }
 
     fn set_break_inactive(&self) {
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(false);
-            let _ = item.set_text(menu_text_break(&self.locale, false));
+            let _ = item.set_text(tray_locale(&self.locale).break_inactive);
         }
     }
 }
@@ -448,7 +429,7 @@ fn set_locale(
     }
 
     if let Some(tray) = app.tray_by_id("focus-tray") {
-        let _ = tray.set_title(Some(tray_title_planning(&normalized)));
+        let _ = tray.set_title(Some(tray_locale(&normalized).planning));
     }
 }
 
@@ -573,7 +554,7 @@ pub fn run() {
             let show_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "show",
-                menu_text_show(&locale),
+                tray_locale(&locale).show,
                 true,
                 Some(NativeIcon::Home),
                 None::<&str>,
@@ -581,7 +562,7 @@ pub fn run() {
             let lock_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "lock",
-                menu_text_lock(&locale, false),
+                tray_locale(&locale).lock_inactive,
                 false,
                 Some(NativeIcon::LockLocked),
                 None::<&str>,
@@ -589,7 +570,7 @@ pub fn run() {
             let end_break_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "end_break",
-                menu_text_break(&locale, false),
+                tray_locale(&locale).break_inactive,
                 false,
                 Some(NativeIcon::Refresh),
                 None::<&str>,
@@ -597,7 +578,7 @@ pub fn run() {
             let settings_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "settings",
-                menu_text_settings(&locale),
+                tray_locale(&locale).settings,
                 true,
                 Some(NativeIcon::RefreshFreestanding),
                 None::<&str>,
@@ -605,7 +586,7 @@ pub fn run() {
             let quit_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "quit",
-                menu_text_quit(&locale),
+                tray_locale(&locale).quit,
                 true,
                 Some(NativeIcon::StopProgressFreestanding),
                 None::<&str>,
@@ -639,7 +620,7 @@ pub fn run() {
             let _tray = tray_builder
                 .icon_as_template(true)
                 .menu(&menu)
-                .title(tray_title_planning(&locale))
+                .title(tray_locale(&locale).planning)
                 .tooltip("Focus Must")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
@@ -673,7 +654,7 @@ pub fn run() {
                                 let s = lock_mutex(&state);
                                 s.locale.clone()
                             };
-                            let _ = tray.set_title(Some(tray_title_planning(&locale)));
+                            let _ = tray.set_title(Some(tray_locale(&locale).planning));
                         }
                     }
                     "quit" => {
@@ -775,7 +756,7 @@ fn tray_title_updater(app: tauri::AppHandle) {
                     let _ = app.emit("state-changed", s.clone());
                 }
                 show_main_window(&app, false);
-                tray_title_planning(&locale).to_string()
+                tray_locale(&locale).planning.to_string()
             } else {
                 let remaining = end_ts - now;
                 let mins = remaining / 60;
@@ -783,7 +764,7 @@ fn tray_title_updater(app: tauri::AppHandle) {
                 tray_title_break(&locale, mins, secs)
             }
         } else {
-            tray_title_planning(&locale).to_string()
+            tray_locale(&locale).planning.to_string()
         };
 
         if let Some(tray) = app.tray_by_id("focus-tray") {

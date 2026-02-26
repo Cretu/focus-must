@@ -17,7 +17,9 @@ export interface AppState {
     is_restricted: boolean;
     default_whitelist: string[];
     session_whitelist: string[];
+    task_description: string | null;
     focus_started_at: number | null;
+    free_activity_started_at: number | null;
     free_activity_end_at: number | null;
     locale: PreferredLocale;
 }

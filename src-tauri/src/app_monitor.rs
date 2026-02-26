@@ -1,17 +1,7 @@
-use crate::{AppInfo, AppState};
+use crate::{lock_mutex, AppInfo, AppState};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
-
-fn lock_mutex<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    match mutex.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            eprintln!("Recovering from poisoned mutex in app_monitor");
-            poisoned.into_inner()
-        }
-    }
-}
 
 #[cfg(target_os = "macos")]
 static ICON_CACHE: std::sync::OnceLock<Mutex<HashMap<String, Option<String>>>> =
