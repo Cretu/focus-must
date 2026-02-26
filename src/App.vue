@@ -374,6 +374,42 @@ async function openSettings() {
     try {
         await loadSettingsApps((target) => hydrateIcons(target));
         settingsWhitelist.value = new Set(appState.value.default_whitelist);
+
+        if (settingsWhitelist.value.size > 0) {
+            const existing = new Set(settingsApps.value.map((app) => app.bundle_id));
+            const missingIds = Array.from(settingsWhitelist.value).filter(
+                (bundleId) => !existing.has(bundleId),
+            );
+
+            if (missingIds.length > 0) {
+                const recovered = await Promise.all(
+                    missingIds.map(async (bundleId) => {
+                        try {
+                            const info = await invoke<AppInfo | null>("get_app_info", {
+                                bundleId,
+                                includeIcon: true,
+                            });
+
+                            if (info) {
+                                return info;
+                            }
+                        } catch (error) {
+                            console.error("Failed to recover default app info:", bundleId, error);
+                        }
+
+                        return {
+                            bundle_id: bundleId,
+                            name: bundleId,
+                            icon_data_url: null,
+                        };
+                    }),
+                );
+
+                settingsApps.value = [...recovered, ...settingsApps.value];
+                void hydrateIcons("settings");
+            }
+        }
+
         settingsLocale.value = appState.value.locale;
 
         autostartEnabled.value = await isAutostartEnabled();

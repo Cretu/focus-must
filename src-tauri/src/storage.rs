@@ -52,7 +52,10 @@ fn default_locale() -> String {
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
-            default_whitelist: crate::DEFAULT_WHITELIST.iter().map(|s| s.to_string()).collect(),
+            default_whitelist: crate::DEFAULT_WHITELIST
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             locale: default_locale(),
         }
     }
@@ -350,8 +353,8 @@ pub fn load_sessions() -> Vec<SessionRecord> {
         let rows = stmt
             .query_map([], |row| {
                 let whitelist_json: String = row.get(5)?;
-                let whitelist = serde_json::from_str::<Vec<String>>(&whitelist_json)
-                    .unwrap_or_else(|_| vec![]);
+                let whitelist =
+                    serde_json::from_str::<Vec<String>>(&whitelist_json).unwrap_or_else(|_| vec![]);
 
                 Ok(SessionRecord {
                     session_type: row.get(0)?,
@@ -394,8 +397,8 @@ pub fn load_sessions_page(offset: u64, limit: u64) -> HistoryPage {
         let rows = stmt
             .query_map(params![(limit + 1) as i64, offset], |row| {
                 let whitelist_json: String = row.get(5)?;
-                let whitelist = serde_json::from_str::<Vec<String>>(&whitelist_json)
-                    .unwrap_or_else(|_| vec![]);
+                let whitelist =
+                    serde_json::from_str::<Vec<String>>(&whitelist_json).unwrap_or_else(|_| vec![]);
 
                 Ok(SessionRecord {
                     session_type: row.get(0)?,

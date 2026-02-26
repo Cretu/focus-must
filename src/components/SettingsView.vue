@@ -50,13 +50,13 @@ const settingsLocaleModel = computed({
         <div class="space-y-4 overflow-y-auto max-h-[62vh]">
             <UCard variant="soft">
                 <template #header>
-                    <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-center justify-between gap-2">
                         <div>
                             <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
                                 <UIcon name="i-lucide-layout-grid" class="text-base" />
                                 <span>{{ t("app.defaultAllowedApps") }}</span>
+                                <span class="text-xs font-normal">({{ t("app.defaultAllowedAppsSubtitle") }})</span>
                             </div>
-                            <p class="text-xs text-muted">{{ t("app.defaultAllowedAppsSubtitle") }}</p>
                         </div>
                         <UButton color="neutral" variant="outline" size="xs" @click="emit('refresh')">
                             {{ t("app.refresh") }}

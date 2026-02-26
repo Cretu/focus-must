@@ -181,6 +181,7 @@ function triggerCustomBreak() {
                                 <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
                                     <UIcon name="i-lucide-layout-grid" class="text-base" />
                                     <span>{{ t("app.appsNeeded") }}</span>
+                                    <span class="text-xs font-normal">({{ t("app.appsNeededHint") }})</span>
                                 </div>
                                 <UButton color="neutral" variant="outline" size="xs" @click="emit('refresh-apps')">
                                     {{ t("app.refresh") }}

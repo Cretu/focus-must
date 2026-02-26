@@ -336,6 +336,11 @@ fn get_app_icon(bundle_id: String) -> Option<String> {
 }
 
 #[tauri::command]
+fn get_app_info(bundle_id: String, include_icon: Option<bool>) -> Option<AppInfo> {
+    app_monitor::get_app_info(&bundle_id, include_icon.unwrap_or(false))
+}
+
+#[tauri::command]
 fn get_state(state: tauri::State<'_, Mutex<AppState>>) -> AppState {
     lock_mutex(&state).clone()
 }
@@ -520,6 +525,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_running_apps,
             get_app_icon,
+            get_app_info,
             get_state,
             unlock_session,
             lock_session,

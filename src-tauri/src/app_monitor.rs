@@ -4,6 +4,9 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 
 #[cfg(target_os = "macos")]
+use std::path::PathBuf;
+
+#[cfg(target_os = "macos")]
 static ICON_CACHE: std::sync::OnceLock<Mutex<HashMap<String, Option<String>>>> =
     std::sync::OnceLock::new();
 
@@ -17,7 +20,7 @@ fn ns_data_to_vec(data: &objc2_foundation::NSData) -> Vec<u8> {
     use std::ffi::c_void;
     use std::ptr::NonNull;
 
-    let length = data.length() as usize;
+    let length = data.length();
     if length == 0 {
         return Vec::new();
     }
@@ -34,12 +37,17 @@ fn ns_data_to_vec(data: &objc2_foundation::NSData) -> Vec<u8> {
 
 #[cfg(target_os = "macos")]
 fn app_icon_data_url(app: &objc2_app_kit::NSRunningApplication) -> Option<String> {
+    let icon = app.icon()?;
+    image_data_url(&icon)
+}
+
+#[cfg(target_os = "macos")]
+fn image_data_url(icon: &objc2_app_kit::NSImage) -> Option<String> {
     use base64::Engine as _;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSBitmapImageRepPropertyKey};
     use objc2_foundation::NSDictionary;
 
-    let icon = app.icon()?;
     let tiff_data = icon.TIFFRepresentation()?;
 
     let bitmap = NSBitmapImageRep::imageRepWithData(&tiff_data)?;
@@ -55,6 +63,63 @@ fn app_icon_data_url(app: &objc2_app_kit::NSRunningApplication) -> Option<String
 
     let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
     Some(format!("data:image/png;base64,{encoded}"))
+}
+
+#[cfg(target_os = "macos")]
+fn app_path_for_bundle_id_macos(bundle_id: &str) -> Option<PathBuf> {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::NSString;
+
+    let bundle = NSString::from_str(bundle_id);
+    let app_url = NSWorkspace::sharedWorkspace().URLForApplicationWithBundleIdentifier(&bundle)?;
+    app_url.to_file_path()
+}
+
+#[cfg(target_os = "macos")]
+fn app_name_from_path_macos(path: &std::path::Path) -> Option<String> {
+    path.file_stem()
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+        .filter(|name| !name.is_empty())
+}
+
+#[cfg(target_os = "macos")]
+fn app_icon_data_url_from_path_macos(path: &std::path::Path) -> Option<String> {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::NSString;
+
+    let ns_path = NSString::from_str(path.to_string_lossy().as_ref());
+    let icon = NSWorkspace::sharedWorkspace().iconForFile(&ns_path);
+    image_data_url(&icon)
+}
+
+pub fn get_app_info(bundle_id: &str, include_icon: bool) -> Option<AppInfo> {
+    #[cfg(target_os = "macos")]
+    {
+        get_app_info_macos(bundle_id, include_icon)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (bundle_id, include_icon);
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_app_info_macos(bundle_id: &str, include_icon: bool) -> Option<AppInfo> {
+    let app_path = app_path_for_bundle_id_macos(bundle_id)?;
+    let name = app_name_from_path_macos(&app_path).unwrap_or_else(|| bundle_id.to_string());
+    let icon_data_url = if include_icon {
+        get_app_icon_macos(bundle_id).or_else(|| app_icon_data_url_from_path_macos(&app_path))
+    } else {
+        None
+    };
+
+    Some(AppInfo {
+        name,
+        bundle_id: bundle_id.to_string(),
+        icon_data_url,
+    })
 }
 
 /// Get list of currently running user-facing applications
@@ -163,6 +228,11 @@ fn get_app_icon_macos(bundle_id: &str) -> Option<String> {
         }
 
         None
+    });
+
+    let generated = generated.or_else(|| {
+        let app_path = app_path_for_bundle_id_macos(bundle_id)?;
+        app_icon_data_url_from_path_macos(&app_path)
     });
 
     let mut cache = lock_mutex(icon_cache());
