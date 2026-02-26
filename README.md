@@ -107,6 +107,9 @@ npm run preview
 
 # Tauri 构建（含 .app / .dmg）
 npm run tauri build
+
+# 按 tag 同步版本后构建（例如 v0.2.0）
+npm run tauri:build:tag -- v0.2.0
 ```
 
 Rust 侧检查（在 `src-tauri/` 下执行）：
@@ -124,10 +127,22 @@ cargo test
 npm run tauri build
 ```
 
+如果希望产物版本号跟发布 tag 一致，使用：
+
+```bash
+npm run tauri:build:tag -- v0.2.0
+```
+
+这会把以下文件的版本统一为 tag（支持 `v1.2.3` 或 `1.2.3`）：
+
+- `package.json`
+- `src-tauri/Cargo.toml`
+- `src-tauri/tauri.conf.json`
+
 默认产物路径：
 
 - `src-tauri/target/release/bundle/macos/Focus Must.app`
-- `src-tauri/target/release/bundle/dmg/Focus Must_0.1.0_aarch64.dmg`
+- `src-tauri/target/release/bundle/dmg/Focus Must_<version>_aarch64.dmg`
 
 ## GitHub 上传建议
 
@@ -167,7 +182,7 @@ npm run tauri build
 若你要自动发布安装包，可在 GitHub 上配置 Actions：
 
 - 触发：`push` tag（如 `v0.1.1`）
-- 执行：`tauri build`
+- 执行：`npm run tauri:build:tag`
 - 上传：产物到 GitHub Release
 
 如需对外分发，建议增加 macOS 签名与公证流程。

@@ -143,7 +143,7 @@ const analyticsData = ref<AnalyticsData | null>(null);
 const analyticsLoading = ref(false);
 
 // Composables
-const { snowEnabled, snowCanvas } = useSnowEffect();
+const { snowEnabled } = useSnowEffect();
 const {
     showFreeActivityOptions,
     customMinutes,
@@ -541,77 +541,83 @@ function loadMoreHistory() {
 
 <template>
     <UApp :locale="nuxtUiLocale">
-    <div class="overlay-container">
-        <canvas ref="snowCanvas" class="snow-canvas" v-show="snowEnabled"></canvas>
+        <div class="overlay-container">
+            <canvas
+                ref="snowCanvas"
+                class="snow-canvas"
+                v-show="snowEnabled"
+            ></canvas>
 
-        <UCard v-if="isBooting" class="w-[min(420px,86vw)]">
-            <div class="space-y-3 text-center">
-                <div class="startup-spinner" aria-hidden="true"></div>
-                <h1 class="text-xl font-semibold">Focus Must</h1>
-                <UProgress :model-value="null" size="sm" />
-                <p class="text-sm text-muted">{{ t("app.startupLoadingApps") }}</p>
-            </div>
-        </UCard>
+            <UCard v-if="isBooting" class="w-[min(420px,86vw)]">
+                <div class="space-y-3 text-center">
+                    <div class="startup-spinner" aria-hidden="true"></div>
+                    <h1 class="text-xl font-semibold">Focus Must</h1>
+                    <UProgress :model-value="null" size="sm" />
+                    <p class="text-sm text-muted">
+                        {{ t("app.startupLoadingApps") }}
+                    </p>
+                </div>
+            </UCard>
 
-        <PlanningView
-            v-else-if="!isFocusing && currentView === 'planning'"
-            v-model:snow-enabled="snowEnabled"
-            v-model:task-description="taskDescription"
-            v-model:show-free-activity-options="showFreeActivityOptions"
-            v-model:custom-minutes="customMinutes"
-            :is-task-input-invalid="isTaskInputInvalid"
-            :is-task-input-shaking="isTaskInputShaking"
-            :recent-task-suggestions="recentTaskSuggestions"
-            :running-apps="runningApps"
-            :selected-apps="selectedApps"
-            :is-on-break="isOnBreak"
-            :break-remaining="breakRemaining"
-            :session-history="sessionHistory"
-            :history-has-more="historyHasMore"
-            :history-loading="historyLoading"
-            @open-settings="openSettings"
-            @open-analytics="openAnalytics"
-            @clear-task-invalid="isTaskInputInvalid = false"
-            @apply-recent-task="applyRecentTask"
-            @refresh-apps="loadApps()"
-            @toggle-app="toggleApp"
-            @start-free-activity="startFreeActivity"
-            @start-focus="startFocus"
-            @load-more-history="loadMoreHistory"
-        />
+            <PlanningView
+                v-else-if="!isFocusing && currentView === 'planning'"
+                v-model:snow-enabled="snowEnabled"
+                v-model:task-description="taskDescription"
+                v-model:show-free-activity-options="showFreeActivityOptions"
+                v-model:custom-minutes="customMinutes"
+                :is-task-input-invalid="isTaskInputInvalid"
+                :is-task-input-shaking="isTaskInputShaking"
+                :recent-task-suggestions="recentTaskSuggestions"
+                :running-apps="runningApps"
+                :selected-apps="selectedApps"
+                :is-on-break="isOnBreak"
+                :break-remaining="breakRemaining"
+                :session-history="sessionHistory"
+                :history-has-more="historyHasMore"
+                :history-loading="historyLoading"
+                @open-settings="openSettings"
+                @open-analytics="openAnalytics"
+                @clear-task-invalid="isTaskInputInvalid = false"
+                @apply-recent-task="applyRecentTask"
+                @refresh-apps="loadApps()"
+                @toggle-app="toggleApp"
+                @start-free-activity="startFreeActivity"
+                @start-focus="startFocus"
+                @load-more-history="loadMoreHistory"
+            />
 
-        <SettingsView
-            v-else-if="!isFocusing && currentView === 'settings'"
-            v-model:autostart-enabled="autostartEnabled"
-            v-model:settings-locale="settingsLocale"
-            :settings-apps="settingsApps"
-            :settings-whitelist="settingsWhitelist"
-            :autostart-loading="autostartLoading"
-            :locale-options-with-text="localeOptionsWithText"
-            @refresh="openSettings"
-            @toggle-settings-app="toggleSettingsApp"
-            @back="currentView = 'planning'"
-            @save="saveSettings"
-        />
+            <SettingsView
+                v-else-if="!isFocusing && currentView === 'settings'"
+                v-model:autostart-enabled="autostartEnabled"
+                v-model:settings-locale="settingsLocale"
+                :settings-apps="settingsApps"
+                :settings-whitelist="settingsWhitelist"
+                :autostart-loading="autostartLoading"
+                :locale-options-with-text="localeOptionsWithText"
+                @refresh="openSettings"
+                @toggle-settings-app="toggleSettingsApp"
+                @back="currentView = 'planning'"
+                @save="saveSettings"
+            />
 
-        <AnalyticsView
-            v-else-if="!isFocusing && currentView === 'analytics'"
-            :analytics-loading="analyticsLoading"
-            :analytics-data="analyticsData"
-            @back="currentView = 'planning'"
-        />
+            <AnalyticsView
+                v-else-if="!isFocusing && currentView === 'analytics'"
+                :analytics-loading="analyticsLoading"
+                :analytics-data="analyticsData"
+                @back="currentView = 'planning'"
+            />
 
-        <FocusSessionCard
-            v-else-if="isFocusing"
-            v-model:show-end-confirm="showEndConfirm"
-            :blocked-app-state="blockedAppState"
-            :return-countdown="returnCountdown"
-            :formatted-time="formattedTime"
-            :task-description="taskDescription"
-            :allowed-app-names="allowedAppNames"
-            @confirm-end="confirmEndFocus"
-        />
-    </div>
+            <FocusSessionCard
+                v-else-if="isFocusing"
+                v-model:show-end-confirm="showEndConfirm"
+                :blocked-app-state="blockedAppState"
+                :return-countdown="returnCountdown"
+                :formatted-time="formattedTime"
+                :task-description="taskDescription"
+                :allowed-app-names="allowedAppNames"
+                @confirm-end="confirmEndFocus"
+            />
+        </div>
     </UApp>
 </template>
 
@@ -633,9 +639,21 @@ function loadMoreHistory() {
     justify-content: center;
     padding: 16px;
     background:
-        radial-gradient(circle at 18% 14%, rgba(59, 130, 246, 0.08), transparent 42%),
-        radial-gradient(circle at 82% 86%, rgba(16, 185, 129, 0.06), transparent 44%),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)),
+        radial-gradient(
+            circle at 18% 14%,
+            rgba(59, 130, 246, 0.08),
+            transparent 42%
+        ),
+        radial-gradient(
+            circle at 82% 86%,
+            rgba(16, 185, 129, 0.06),
+            transparent 44%
+        ),
+        linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.05),
+            rgba(255, 255, 255, 0.01)
+        ),
         rgba(20, 28, 44, 0.12);
     backdrop-filter: blur(22px) saturate(130%);
     -webkit-backdrop-filter: blur(22px) saturate(130%);
@@ -643,9 +661,21 @@ function loadMoreHistory() {
 
 :global(html.light) .overlay-container {
     background:
-        radial-gradient(circle at 18% 14%, rgba(59, 130, 246, 0.035), transparent 42%),
-        radial-gradient(circle at 82% 86%, rgba(16, 185, 129, 0.03), transparent 44%),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015)),
+        radial-gradient(
+            circle at 18% 14%,
+            rgba(59, 130, 246, 0.035),
+            transparent 42%
+        ),
+        radial-gradient(
+            circle at 82% 86%,
+            rgba(16, 185, 129, 0.03),
+            transparent 44%
+        ),
+        linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.08),
+            rgba(255, 255, 255, 0.015)
+        ),
         rgba(236, 245, 255, 0.14);
 }
 

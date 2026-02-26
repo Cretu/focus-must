@@ -1,13 +1,15 @@
 {
   "name": "focus-must",
   "private": true,
-  "version": "0.1.0",
+  "version": "2.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "version:from-tag": "node scripts/set-version-from-tag.mjs",
+    "tauri:build:tag": "node scripts/tauri-build-from-tag.mjs"
   },
   "dependencies": {
     "@nuxt/ui": "^4.4.0",

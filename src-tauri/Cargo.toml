@@ -1,6 +1,6 @@
 [package]
 name = "focus-must"
-version = "0.1.0"
+version = "2.2.0"
 description = "Focus management app for macOS — plan before you use"
 authors = ["Luke"]
 edition = "2021"
