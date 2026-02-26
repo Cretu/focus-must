@@ -78,5 +78,9 @@ export function useSnowEffect() {
         stop()
     })
 
-    return { snowEnabled, snowCanvas }
+    function setSnowCanvas(el: unknown) {
+        snowCanvas.value = el instanceof HTMLCanvasElement ? el : null
+    }
+
+    return { snowEnabled, setSnowCanvas }
 }

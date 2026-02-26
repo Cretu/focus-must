@@ -11,13 +11,22 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  detect-version:
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.version.outputs.changed }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Detect version change
         id: version
@@ -35,15 +44,85 @@ jobs:
 
           if [ -n "$current_version" ] && [ "$current_version" != "$previous_version" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "version=$current_version" >> "$GITHUB_OUTPUT"
             echo "tag=v$current_version" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create GitHub release
-        if: steps.version.outputs.changed == 'true'
+  release:
+    needs: detect-version
+    if: needs.detect-version.outputs.changed == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync build versions
+        env:
+          APP_VERSION: ${{ needs.detect-version.outputs.version }}
+        run: |
+          APP_VERSION="$APP_VERSION" python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["APP_VERSION"]
+          root = Path(".")
+
+          for rel_path in ("package.json", "src-tauri/tauri.conf.json"):
+              path = root / rel_path
+              data = json.loads(path.read_text())
+              data["version"] = version
+              path.write_text(json.dumps(data, indent=2) + "\n")
+
+          cargo_path = root / "src-tauri/Cargo.toml"
+          cargo_text = cargo_path.read_text()
+          updated, count = re.subn(
+              r'(?m)^version\s*=\s*"[^"]+"',
+              f'version = "{version}"',
+              cargo_text,
+              count=1,
+          )
+
+          if count != 1:
+              raise SystemExit("Failed to update src-tauri/Cargo.toml version")
+
+          cargo_path.write_text(updated)
+          print(f"Synced build version to: {version}")
+          PY
+
+      - name: Build Tauri bundles
+        run: npm run tauri build
+
+      - name: Archive .app bundle
+        run: |
+          mkdir -p artifacts
+          for app in src-tauri/target/release/bundle/macos/*.app; do
+            [ -d "$app" ] || continue
+            tar -czf "artifacts/$(basename "$app").tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
+          done
+          cp -f src-tauri/target/release/bundle/dmg/*.dmg artifacts/ || true
+
+      - name: Create GitHub release and upload artifacts
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: Release ${{ steps.version.outputs.tag }}
+          tag_name: ${{ needs.detect-version.outputs.tag }}
+          name: Release ${{ needs.detect-version.outputs.tag }}
           generate_release_notes: true
+          files: |
+            artifacts/*.dmg
+            artifacts/*.app.tar.gz

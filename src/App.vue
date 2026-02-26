@@ -146,7 +146,8 @@ const {
 } = useHistory();
 
 // Composables
-const { snowEnabled } = useSnowEffect();
+const snowEffect = useSnowEffect();
+const { snowEnabled } = snowEffect;
 const {
     showFreeActivityOptions,
     customMinutes,
@@ -539,7 +540,7 @@ async function confirmEndFocus() {
     <UApp :locale="nuxtUiLocale">
         <div class="overlay-container">
             <canvas
-                ref="snowCanvas"
+                :ref="snowEffect.setSnowCanvas"
                 class="snow-canvas"
                 v-show="snowEnabled"
             ></canvas>
