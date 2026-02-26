@@ -369,7 +369,7 @@ pub fn load_sessions() -> Vec<SessionRecord> {
 
         Some(rows.filter_map(Result::ok).collect())
     })
-    .unwrap_or_else(|| load_sessions_from_jsonl())
+    .unwrap_or_else(load_sessions_from_jsonl)
 }
 
 pub fn load_sessions_page(offset: u64, limit: u64) -> HistoryPage {

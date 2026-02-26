@@ -27,11 +27,7 @@ import {
     type LocaleCode,
     type PreferredLocale,
 } from "./i18n";
-import type {
-    AppInfo,
-    AppState,
-    BlockedAppEvent,
-} from "./types/contracts";
+import type { AppInfo, AppState, BlockedAppEvent } from "./types/contracts";
 
 const FocusSessionCard = defineAsyncComponent(
     () => import("./components/FocusSessionCard.vue"),
@@ -42,8 +38,6 @@ const SettingsView = defineAsyncComponent(
 const AnalyticsView = defineAsyncComponent(
     () => import("./components/AnalyticsView.vue"),
 );
-
-
 
 const { t, locale } = useI18n();
 
@@ -152,7 +146,7 @@ const {
 } = useHistory();
 
 // Composables
-const { snowEnabled, snowCanvas } = useSnowEffect();
+const { snowEnabled } = useSnowEffect();
 const {
     showFreeActivityOptions,
     customMinutes,
@@ -376,7 +370,9 @@ async function openSettings() {
         settingsWhitelist.value = new Set(appState.value.default_whitelist);
 
         if (settingsWhitelist.value.size > 0) {
-            const existing = new Set(settingsApps.value.map((app) => app.bundle_id));
+            const existing = new Set(
+                settingsApps.value.map((app) => app.bundle_id),
+            );
             const missingIds = Array.from(settingsWhitelist.value).filter(
                 (bundleId) => !existing.has(bundleId),
             );
@@ -385,16 +381,23 @@ async function openSettings() {
                 const recovered = await Promise.all(
                     missingIds.map(async (bundleId) => {
                         try {
-                            const info = await invoke<AppInfo | null>("get_app_info", {
-                                bundleId,
-                                includeIcon: true,
-                            });
+                            const info = await invoke<AppInfo | null>(
+                                "get_app_info",
+                                {
+                                    bundleId,
+                                    includeIcon: true,
+                                },
+                            );
 
                             if (info) {
                                 return info;
                             }
                         } catch (error) {
-                            console.error("Failed to recover default app info:", bundleId, error);
+                            console.error(
+                                "Failed to recover default app info:",
+                                bundleId,
+                                error,
+                            );
                         }
 
                         return {
@@ -425,8 +428,6 @@ async function openAnalytics() {
     currentView.value = "analytics";
     await loadAnalytics();
 }
-
-
 
 async function saveSettings() {
     const whitelist = Array.from(settingsWhitelist.value);
@@ -532,7 +533,6 @@ async function confirmEndFocus() {
     initSelectedFromWhitelist();
     await loadHistory(true);
 }
-
 </script>
 
 <template>

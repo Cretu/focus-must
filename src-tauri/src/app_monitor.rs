@@ -110,7 +110,7 @@ fn get_app_info_macos(bundle_id: &str, include_icon: bool) -> Option<AppInfo> {
     let app_path = app_path_for_bundle_id_macos(bundle_id)?;
     let name = app_name_from_path_macos(&app_path).unwrap_or_else(|| bundle_id.to_string());
     let icon_data_url = if include_icon {
-        get_app_icon_macos(bundle_id).or_else(|| app_icon_data_url_from_path_macos(&app_path))
+        app_icon_data_url_from_path_macos(&app_path)
     } else {
         None
     };
@@ -190,6 +190,7 @@ pub fn get_app_icon(bundle_id: &str) -> Option<String> {
     #[cfg(target_os = "macos")]
     {
         get_app_icon_macos(bundle_id)
+            .or_else(|| get_app_info(bundle_id, true).and_then(|app| app.icon_data_url))
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -230,10 +231,8 @@ fn get_app_icon_macos(bundle_id: &str) -> Option<String> {
         None
     });
 
-    let generated = generated.or_else(|| {
-        let app_path = app_path_for_bundle_id_macos(bundle_id)?;
-        app_icon_data_url_from_path_macos(&app_path)
-    });
+    let generated =
+        generated.or_else(|| get_app_info_macos(bundle_id, true).and_then(|app| app.icon_data_url));
 
     let mut cache = lock_mutex(icon_cache());
     cache.insert(bundle_id.to_string(), generated.clone());
