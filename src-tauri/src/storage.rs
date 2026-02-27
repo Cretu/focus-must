@@ -29,7 +29,7 @@ where
     F: FnOnce(&Connection) -> Option<R>,
 {
     let db = init_db()?;
-    let conn = crate::lock_mutex(db);
+    let conn = crate::state::lock_mutex(db);
     f(&conn)
 }
 
@@ -52,7 +52,7 @@ fn default_locale() -> String {
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
-            default_whitelist: crate::DEFAULT_WHITELIST
+            default_whitelist: crate::state::DEFAULT_WHITELIST
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),

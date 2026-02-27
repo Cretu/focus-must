@@ -1,7 +1,7 @@
 {
   "name": "focus-must",
   "private": true,
-  "version": "2.2.2",
+  "version": "2.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,7 @@
     "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-store": "^2.4.2",
+    "pinia": "^3.0.4",
     "tailwindcss": "^4.1.18",
     "vue": "^3.5.13",
     "vue-i18n": "^11.2.8",

@@ -1,29 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import type { AnalyticsData } from "../types/contracts";
+import { useAppStore } from "../stores/appStore";
 
-const props = defineProps<{
-    analyticsLoading: boolean;
-    analyticsData: AnalyticsData | null;
-}>();
-
-const emit = defineEmits<{
-    (event: "back"): void;
-}>();
-
+const store = useAppStore();
 const { t } = useI18n();
 
 const hoveredTrendIndex = ref<number | null>(null);
 
 const maxDailyFocusSecs = computed(() => {
-    const values = props.analyticsData?.daily_trend.map((point) => point.focus_secs) ?? [];
+    const values = store.analyticsData?.daily_trend.map((point) => point.focus_secs) ?? [];
     return Math.max(1, ...values);
 });
 
 const maxHourFocusSecs = computed(() => {
     const values =
-        props.analyticsData?.focus_hour_distribution.map((point) => point.focus_secs) ?? [];
+        store.analyticsData?.focus_hour_distribution.map((point) => point.focus_secs) ?? [];
     return Math.max(1, ...values);
 });
 
@@ -38,7 +30,7 @@ type DailyTrendChartPoint = {
 };
 
 const dailyTrendChartPoints = computed(() => {
-    const trend = props.analyticsData?.daily_trend ?? [];
+    const trend = store.analyticsData?.daily_trend ?? [];
     if (trend.length === 0) {
         return [] as DailyTrendChartPoint[];
     }
@@ -216,13 +208,13 @@ function formatHourLabel(hour: number): string {
 
         <div class="h-full min-h-0 space-y-3">
             <UAlert
-                v-if="analyticsLoading"
+                v-if="store.analyticsLoading"
                 color="neutral"
                 variant="soft"
                 :title="t('app.analyticsLoading')"
             />
 
-            <template v-else-if="analyticsData">
+            <template v-else-if="store.analyticsData">
                 <div class="grid gap-2.5 sm:grid-cols-3">
                     <UCard variant="soft">
                         <div class="analytics-metric-card">
@@ -231,7 +223,7 @@ function formatHourLabel(hour: number): string {
                                 <div class="analytics-metric-value-group">
                                     <p class="analytics-metric-label">{{ t("app.totalFocusDuration") }}</p>
                                     <p class="analytics-metric-value">
-                                        {{ formatDurationLabel(analyticsData.summary.total_focus_secs) }}
+                                        {{ formatDurationLabel(store.analyticsData.summary.total_focus_secs) }}
                                     </p>
                                 </div>
                             </div>
@@ -244,7 +236,7 @@ function formatHourLabel(hour: number): string {
                                 <div class="analytics-metric-value-group">
                                     <p class="analytics-metric-label">{{ t("app.totalBreakDuration") }}</p>
                                     <p class="analytics-metric-value">
-                                        {{ formatDurationLabel(analyticsData.summary.total_break_secs) }}
+                                        {{ formatDurationLabel(store.analyticsData.summary.total_break_secs) }}
                                     </p>
                                 </div>
                             </div>
@@ -257,7 +249,7 @@ function formatHourLabel(hour: number): string {
                                 <div class="analytics-metric-value-group">
                                     <p class="analytics-metric-label">{{ t("app.totalSessions") }}</p>
                                     <p class="analytics-metric-value">
-                                        {{ analyticsData.summary.total_sessions }}
+                                        {{ store.analyticsData.summary.total_sessions }}
                                     </p>
                                 </div>
                             </div>
@@ -361,7 +353,7 @@ function formatHourLabel(hour: number): string {
                     </template>
                     <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
                         <div
-                            v-for="bucket in analyticsData.focus_hour_distribution"
+                            v-for="bucket in store.analyticsData.focus_hour_distribution"
                             :key="bucket.hour"
                             class="grid grid-cols-[100px_1fr_64px] items-center gap-1"
                         >
@@ -382,7 +374,7 @@ function formatHourLabel(hour: number): string {
                     color="neutral"
                     variant="outline"
                     leading-icon="i-lucide-arrow-left"
-                    @click="emit('back')"
+                    @click="store.currentView = 'planning'"
                 >
                     {{ t("app.back") }}
                 </UButton>

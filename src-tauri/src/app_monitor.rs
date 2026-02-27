@@ -1,4 +1,4 @@
-use crate::{lock_mutex, AppInfo, AppState};
+use crate::state::{lock_mutex, AppInfo, AppState};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
@@ -317,8 +317,11 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                         }),
                     );
                 } else if is_restricted && allowed && blocking_visible {
+                    /// Minimum time the blocking window must remain visible
+                    /// before it can be auto-hidden (prevents flicker).
+                    const BLOCK_WINDOW_MIN_DISPLAY_MS: u64 = 700;
                     let can_hide_now = blocking_shown_at
-                        .map(|t| t.elapsed() >= Duration::from_millis(700))
+                        .map(|t| t.elapsed() >= Duration::from_millis(BLOCK_WINDOW_MIN_DISPLAY_MS))
                         .unwrap_or(true);
 
                     if !can_hide_now {
@@ -337,6 +340,8 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
             }
         }
 
-        thread::sleep(Duration::from_millis(500));
+        /// Interval between frontmost-app polling checks.
+        const APP_MONITOR_POLL_INTERVAL_MS: u64 = 500;
+        thread::sleep(Duration::from_millis(APP_MONITOR_POLL_INTERVAL_MS));
     }
 }

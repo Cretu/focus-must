@@ -1,39 +1,15 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { useAppStore } from "../stores/appStore";
 import AppGrid from "./AppGrid.vue";
 import type { PreferredLocale } from "../i18n";
-import type { AppInfo } from "../types/contracts";
 
-const props = defineProps<{
-    settingsApps: AppInfo[];
-    settingsWhitelist: Set<string>;
-    autostartEnabled: boolean;
-    autostartLoading: boolean;
-    settingsLocale: PreferredLocale;
+defineProps<{
     localeOptionsWithText: Array<{ label: string; value: PreferredLocale }>;
 }>();
 
-const emit = defineEmits<{
-    (event: "refresh"): void;
-    (event: "toggle-settings-app", bundleId: string): void;
-    (event: "back"): void;
-    (event: "save"): void;
-    (event: "update:autostartEnabled", value: boolean): void;
-    (event: "update:settingsLocale", value: PreferredLocale): void;
-}>();
-
+const store = useAppStore();
 const { t } = useI18n();
-
-const autostartEnabledModel = computed({
-    get: () => props.autostartEnabled,
-    set: (value: boolean) => emit("update:autostartEnabled", value),
-});
-
-const settingsLocaleModel = computed({
-    get: () => props.settingsLocale,
-    set: (value: PreferredLocale) => emit("update:settingsLocale", value),
-});
 </script>
 
 <template>
@@ -58,16 +34,16 @@ const settingsLocaleModel = computed({
                                 <span class="text-xs font-normal">({{ t("app.defaultAllowedAppsSubtitle") }})</span>
                             </div>
                         </div>
-                        <UButton color="neutral" variant="outline" size="xs" @click="emit('refresh')">
+                        <UButton color="neutral" variant="outline" size="xs" @click="store.openSettings()">
                             {{ t("app.refresh") }}
                         </UButton>
                     </div>
                 </template>
 
                 <AppGrid
-                    :apps="settingsApps"
-                    :selected-apps="settingsWhitelist"
-                    @toggle-app="(id: string) => emit('toggle-settings-app', id)"
+                    :apps="store.settingsApps"
+                    :selected-apps="store.settingsWhitelist"
+                    @toggle-app="(id: string) => store.toggleSettingsApp(id)"
                 />
             </UCard>
 
@@ -80,7 +56,7 @@ const settingsLocaleModel = computed({
                         </p>
                         <p class="text-xs text-muted">{{ t("app.autostartSubtitle") }}</p>
                     </div>
-                    <USwitch v-model="autostartEnabledModel" :disabled="autostartLoading" />
+                    <USwitch v-model="store.autostartEnabled" :disabled="store.autostartLoading" />
                 </div>
             </UCard>
 
@@ -92,7 +68,7 @@ const settingsLocaleModel = computed({
                             <span>{{ t("app.defaultLanguage") }}</span>
                         </p>
                         <USelect
-                            v-model="settingsLocaleModel"
+                            v-model="store.settingsLocale"
                             :items="localeOptionsWithText"
                             value-key="value"
                             label-key="label"
@@ -118,7 +94,7 @@ const settingsLocaleModel = computed({
                     color="neutral"
                     variant="outline"
                     class="flex-1 justify-center text-center"
-                    @click="emit('back')"
+                    @click="store.currentView = 'planning'"
                 >
                     <UIcon name="i-lucide-arrow-left" class="text-base" />
                     {{ t("app.back") }}
@@ -127,7 +103,7 @@ const settingsLocaleModel = computed({
                     color="success"
                     variant="solid"
                     class="flex-1 justify-center text-center"
-                    @click="emit('save')"
+                    @click="store.saveSettings()"
                 >
                     <UIcon name="i-lucide-save" class="text-base" />
                     {{ t("app.saveSettings") }}

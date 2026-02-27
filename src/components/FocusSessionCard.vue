@@ -1,67 +1,48 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { useAppStore } from "../stores/appStore";
 import BlockedAppPanel from "./BlockedAppPanel.vue";
-import type { AppInfo, BlockedAppEvent } from "../types/contracts";
 
-const props = defineProps<{
-    blockedAppState: BlockedAppEvent | null;
-    returnCountdown: number;
-    formattedTime: string;
-    taskDescription: string;
-    allowedAppNames: AppInfo[];
-    showEndConfirm: boolean;
-}>();
-
-const emit = defineEmits<{
-    (event: "update:showEndConfirm", value: boolean): void;
-    (event: "confirm-end"): void;
-}>();
-
+const store = useAppStore();
 const { t } = useI18n();
 
-const endConfirmOpen = computed({
-    get: () => props.showEndConfirm,
-    set: (value: boolean) => emit("update:showEndConfirm", value),
-});
-
 function requestEndFocus() {
-    endConfirmOpen.value = true;
+    store.showEndConfirm = true;
 }
 
 function cancelEndFocus() {
-    endConfirmOpen.value = false;
+    store.showEndConfirm = false;
 }
 
 function confirmEndFocus() {
-    endConfirmOpen.value = false;
-    emit("confirm-end");
+    store.showEndConfirm = false;
+    store.confirmEndFocus();
 }
 </script>
 
 <template>
     <UCard class="w-[min(760px,90vw)] text-center">
         <BlockedAppPanel
-            v-if="blockedAppState"
-            :blocked-app-state="blockedAppState"
-            :return-countdown="returnCountdown"
+            v-if="store.blockedAppState"
+            :blocked-app-state="store.blockedAppState"
+            :return-countdown="store.returnCountdown"
         />
 
         <div v-else class="space-y-5">
             <UIcon name="i-lucide-brain" class="mx-auto block text-6xl text-primary" />
             <h1 class="text-2xl font-semibold">{{ t("app.keepFocus") }}</h1>
 
-            <div class="timer-display">{{ formattedTime }}</div>
+            <div class="timer-display">{{ store.formattedTime }}</div>
 
             <UAlert color="neutral" variant="soft">
                 <template #description>
-                    {{ taskDescription || t("app.focusTaskFallback") }}
+                    {{ store.taskDescription || t("app.focusTaskFallback") }}
                 </template>
             </UAlert>
 
-            <div v-if="allowedAppNames.length > 0" class="flex flex-wrap justify-center gap-2">
+            <div v-if="store.allowedAppNames.length > 0" class="flex flex-wrap justify-center gap-2">
                 <UBadge
-                    v-for="app in allowedAppNames"
+                    v-for="app in store.allowedAppNames"
                     :key="app.bundle_id"
                     color="success"
                     variant="soft"
@@ -88,7 +69,7 @@ function confirmEndFocus() {
         </div>
 
         <UModal
-            v-model:open="endConfirmOpen"
+            v-model:open="store.showEndConfirm"
             :title="t('app.confirmEndTitle')"
             :description="t('app.confirmEndDescription')"
         >
