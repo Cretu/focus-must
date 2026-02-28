@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, defineAsyncComponent } from "vue";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { en, zh_cn } from "@nuxt/ui/locale";
 import { useAppStore } from "./stores/appStore";
 import { useSnowEffect } from "./composables/useSnowEffect";
 import { localeOptionsWithText } from "./i18n";
-import PlanningView from "./components/PlanningView.vue";
 
+const OverlayView = defineAsyncComponent(
+    () => import("./components/OverlayView.vue"),
+);
+const PlanningView = defineAsyncComponent(
+    () => import("./components/PlanningView.vue"),
+);
 const FocusSessionCard = defineAsyncComponent(
     () => import("./components/FocusSessionCard.vue"),
 );
@@ -16,6 +22,9 @@ const AnalyticsView = defineAsyncComponent(
     () => import("./components/AnalyticsView.vue"),
 );
 
+// Detect if this window is an overlay (secondary monitor)
+const isOverlay = getCurrentWindow().label.startsWith("overlay-");
+
 const store = useAppStore();
 const snowEffect = useSnowEffect();
 const { snowEnabled } = snowEffect;
@@ -25,17 +34,25 @@ const nuxtUiLocale = computed(() =>
 );
 
 onMounted(() => {
-    store.initialize();
+    if (!isOverlay) {
+        store.initialize();
+    }
 });
 
 onUnmounted(() => {
-    store.cleanup();
+    if (!isOverlay) {
+        store.cleanup();
+    }
 });
 </script>
 
 <template>
     <UApp :locale="nuxtUiLocale">
-        <div class="overlay-container">
+        <!-- Overlay window: dedicated focus view -->
+        <OverlayView v-if="isOverlay" />
+
+        <!-- Main window: full app -->
+        <div v-else class="overlay-container">
             <canvas
                 :ref="snowEffect.setSnowCanvas"
                 class="snow-canvas"

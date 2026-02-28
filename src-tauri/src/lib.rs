@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use tauri::{
     menu::{IconMenuItem, Menu, NativeIcon},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    webview::WebviewWindowBuilder,
     Emitter, Manager,
 };
 use tray::{tray_locale, tray_title_break, tray_title_focus, TrayMenuState};
@@ -255,16 +256,20 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // --- Setup blocking window ---
+            // --- Setup blocking windows for all monitors ---
             if let Some(win) = app.get_webview_window("main") {
-                if let Some(monitor) = win.primary_monitor().ok().flatten() {
-                    let size = monitor.size();
-                    let pos = monitor.position();
+                let monitors = win.available_monitors().unwrap_or_default();
+                let primary = win.primary_monitor().ok().flatten();
+
+                // Size main window to primary monitor
+                if let Some(ref primary_mon) = primary {
+                    let size = primary_mon.size();
+                    let pos = primary_mon.position();
                     let _ = win.set_size(tauri::PhysicalSize::new(size.width, size.height));
                     let _ = win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
                 }
 
-                // Visible on all macOS Spaces
+                // Visible on all macOS Spaces for main window
                 #[cfg(target_os = "macos")]
                 {
                     use objc2::msg_send;
@@ -274,6 +279,60 @@ pub fn run() {
                             let behavior: isize = (1 << 0) | (1 << 4);
                             let _: () = msg_send![&*ns_win, setCollectionBehavior: behavior];
                         }
+                    }
+                }
+
+                // Create overlay windows for non-primary monitors
+                let primary_name = primary.as_ref().and_then(|m| m.name());
+                let frontend_url = tauri::WebviewUrl::App("index.html".into());
+
+                for (i, monitor) in monitors.iter().enumerate() {
+                    // Skip the primary monitor (already handled by main window)
+                    if let Some(p_name) = primary_name {
+                        if monitor.name() == Some(p_name) {
+                            continue;
+                        }
+                    }
+
+                    let label = format!("overlay-{i}");
+                    let size = monitor.size();
+                    let pos = monitor.position();
+
+                    if let Ok(overlay_win) = WebviewWindowBuilder::new(
+                        app,
+                        &label,
+                        frontend_url.clone(),
+                    )
+                    .title("")
+                    .decorations(false)
+                    .transparent(true)
+                    .always_on_top(true)
+                    .resizable(false)
+                    .closable(false)
+                    .skip_taskbar(true)
+                    .visible(false)
+                    .build()
+                    {
+                        // Use physical size/position to match monitor exactly
+                        let _ = overlay_win
+                            .set_size(tauri::PhysicalSize::new(size.width, size.height));
+                        let _ = overlay_win
+                            .set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
+
+                        // Make overlay visible on all macOS Spaces
+                        #[cfg(target_os = "macos")]
+                        {
+                            use objc2::msg_send;
+                            if let Ok(ns_window) = overlay_win.ns_window() {
+                                let ns_win: *mut objc2::runtime::AnyObject = ns_window.cast();
+                                unsafe {
+                                    let behavior: isize = (1 << 0) | (1 << 4);
+                                    let _: () =
+                                        msg_send![&*ns_win, setCollectionBehavior: behavior];
+                                }
+                            }
+                        }
+                        let _ = overlay_win; // suppress unused warning
                     }
                 }
             }

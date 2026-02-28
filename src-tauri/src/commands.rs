@@ -12,11 +12,40 @@ use tauri::{Emitter, Manager};
 // ---------------------------------------------------------------------------
 
 /// Show the main window (optionally always-on-top) and focus it.
+/// Also shows all overlay windows on secondary monitors.
 pub fn show_main_window(app: &tauri::AppHandle, always_on_top: bool) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.set_always_on_top(always_on_top);
         let _ = win.show();
         let _ = win.set_focus();
+    }
+    show_all_overlays(app, always_on_top);
+}
+
+/// Hide the main window and all overlay windows.
+pub fn hide_all_windows(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.hide();
+    }
+    hide_all_overlays(app);
+}
+
+/// Show all overlay windows on secondary monitors.
+fn show_all_overlays(app: &tauri::AppHandle, always_on_top: bool) {
+    for (label, win) in app.webview_windows() {
+        if label.starts_with("overlay-") {
+            let _ = win.set_always_on_top(always_on_top);
+            let _ = win.show();
+        }
+    }
+}
+
+/// Hide all overlay windows.
+fn hide_all_overlays(app: &tauri::AppHandle) {
+    for (label, win) in app.webview_windows() {
+        if label.starts_with("overlay-") {
+            let _ = win.hide();
+        }
     }
 }
 
@@ -127,9 +156,7 @@ pub fn unlock_session(
         ts.set_focus_active();
     }
 
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.hide();
-    }
+    hide_all_windows(&app);
 }
 
 /// End focus — clear whitelist, show blocking window
@@ -238,9 +265,7 @@ pub fn start_free_activity(
         ts.set_break_active();
     }
 
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.hide();
-    }
+    hide_all_windows(&app);
 
     if let Some(tray) = app.tray_by_id("focus-tray") {
         let locale = {

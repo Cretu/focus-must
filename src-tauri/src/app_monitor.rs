@@ -1,3 +1,4 @@
+use crate::commands;
 use crate::state::{lock_mutex, AppInfo, AppState};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -303,6 +304,13 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                         let _ = win.set_always_on_top(true);
                         let _ = win.show();
                     }
+                    // Show overlay windows on all secondary monitors
+                    for (label, win) in app.webview_windows() {
+                        if label.starts_with("overlay-") {
+                            let _ = win.set_always_on_top(true);
+                            let _ = win.show();
+                        }
+                    }
 
                     blocking_visible = true;
                     blocking_shown_at = Some(Instant::now());
@@ -328,9 +336,7 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                         continue;
                     }
 
-                    if let Some(win) = app.get_webview_window("main") {
-                        let _ = win.hide();
-                    }
+                    commands::hide_all_windows(&app);
 
                     let _ = app.emit("blocked-app-cleared", serde_json::Value::Null);
 

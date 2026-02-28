@@ -53,6 +53,10 @@
     "confirmEnd": "确定结束",
     "language": "语言"
   },
+  "overlay": {
+    "breakTitle": "休息一下",
+    "planningHint": "请在主屏幕上规划你的下一个任务"
+  },
   "history": {
     "all": "全部",
     "focus": "专注",

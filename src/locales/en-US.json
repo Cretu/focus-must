@@ -53,6 +53,10 @@
         "confirmEnd": "Confirm",
         "language": "Language"
     },
+    "overlay": {
+        "breakTitle": "Taking a Break",
+        "planningHint": "Plan your next task on the main screen"
+    },
     "history": {
         "all": "All",
         "focus": "Focus",
