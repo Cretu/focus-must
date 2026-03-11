@@ -299,7 +299,7 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                     last_valid_app_name = current_app_name.clone();
                 }
 
-                if is_restricted && !allowed {
+                if has_focus_session && is_restricted && !is_free_activity && !allowed {
                     if let Some(win) = app.get_webview_window("main") {
                         let _ = win.set_always_on_top(true);
                         let _ = win.show();
@@ -324,7 +324,7 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                             "return_to_name": if has_focus_session { Some(last_valid_app_name.clone()) } else { None },
                         }),
                     );
-                } else if is_restricted && allowed && blocking_visible {
+                } else if has_focus_session && is_restricted && !is_free_activity && allowed && blocking_visible {
                     /// Minimum time the blocking window must remain visible
                     /// before it can be auto-hidden (prevents flicker).
                     const BLOCK_WINDOW_MIN_DISPLAY_MS: u64 = 700;
