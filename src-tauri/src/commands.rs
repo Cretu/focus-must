@@ -189,16 +189,18 @@ pub fn set_locale(
 ) {
     let normalized = normalize_locale(&locale).to_string();
 
-    let (has_focus_session, has_break_session, default_whitelist) = {
+    let (next_state, has_focus_session, has_break_session, default_whitelist) = {
         let mut s = lock_mutex(&state);
         s.locale = normalized.clone();
-        let _ = app.emit("state-changed", s.clone());
         (
+            s.clone(),
             s.focus_started_at.is_some(),
             s.free_activity_end_at.is_some(),
             s.default_whitelist.clone(),
         )
     };
+
+    let _ = app.emit("state-changed", next_state);
 
     storage::save_settings(&storage::UserSettings {
         default_whitelist,
@@ -223,10 +225,12 @@ pub fn set_locale(
 }
 
 #[tauri::command]
-pub fn switch_to_app(bundle_id: String) {
-    let _ = std::process::Command::new("open")
+pub fn switch_to_app(bundle_id: String) -> Result<(), String> {
+    std::process::Command::new("open")
         .args(["-b", &bundle_id])
-        .spawn();
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Failed to switch to app {bundle_id}: {error}"))
 }
 
 #[tauri::command]

@@ -13,15 +13,36 @@ const DB_FILE: &str = "history.db";
 // ---------------------------------------------------------------------------
 // Singleton DB connection
 // ---------------------------------------------------------------------------
-static DB: std::sync::OnceLock<Mutex<Connection>> = std::sync::OnceLock::new();
+enum DbState {
+    Available(Mutex<Connection>),
+    Unavailable,
+}
+
+static DB: std::sync::OnceLock<DbState> = std::sync::OnceLock::new();
 
 fn init_db() -> Option<&'static Mutex<Connection>> {
-    Some(DB.get_or_init(|| {
-        let conn = Connection::open(db_path()).expect("Failed to open history database");
-        initialize_schema(&conn).expect("Failed to initialize database schema");
+    let state = DB.get_or_init(|| {
+        let conn = match Connection::open(db_path()) {
+            Ok(conn) => conn,
+            Err(error) => {
+                eprintln!("Failed to open history database, falling back to JSONL: {error}");
+                return DbState::Unavailable;
+            }
+        };
+
+        if let Err(error) = initialize_schema(&conn) {
+            eprintln!("Failed to initialize database schema, falling back to JSONL: {error}");
+            return DbState::Unavailable;
+        }
+
         migrate_jsonl_if_needed(&conn);
-        Mutex::new(conn)
-    }))
+        DbState::Available(Mutex::new(conn))
+    });
+
+    match state {
+        DbState::Available(conn) => Some(conn),
+        DbState::Unavailable => None,
+    }
 }
 
 fn with_db<F, R>(f: F) -> Option<R>

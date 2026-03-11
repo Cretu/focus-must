@@ -4,7 +4,14 @@ interface Snowflake {
     x: number; y: number; r: number; speed: number; wind: number; opacity: number
 }
 
-export function useSnowEffect() {
+interface SnowEffectOptions {
+    flakeCount?: number
+}
+
+const DEFAULT_FLAKE_COUNT = 120
+
+export function useSnowEffect(options?: SnowEffectOptions) {
+    const flakeCount = Math.max(0, options?.flakeCount ?? DEFAULT_FLAKE_COUNT)
     const snowEnabled = ref(false)
     const snowCanvas = ref<HTMLCanvasElement | null>(null)
     let animId: number | null = null
@@ -33,7 +40,7 @@ export function useSnowEffect() {
             teardownResize = null
         }
 
-        const flakes: Snowflake[] = Array.from({ length: 120 }, () => ({
+        const flakes: Snowflake[] = Array.from({ length: flakeCount }, () => ({
             x: Math.random() * canvas.width,
             y: Math.random() * canvas.height,
             r: Math.random() * 3 + 1,

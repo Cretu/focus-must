@@ -13,13 +13,11 @@ import {
     type LocaleCode,
     type PreferredLocale,
 } from "../i18n";
+import { useHistory } from "../composables/useHistory";
 import type {
     AppInfo,
     AppState,
     BlockedAppEvent,
-    SessionRecord,
-    HistoryPage,
-    AnalyticsData,
 } from "../types/contracts";
 
 // ---------------------------------------------------------------------------
@@ -53,8 +51,6 @@ async function fetchAppIcon(bundleId: string): Promise<string | null> {
         return null;
     }
 }
-
-const HISTORY_PAGE_SIZE = 20;
 
 // ---------------------------------------------------------------------------
 // Store
@@ -120,12 +116,16 @@ export const useAppStore = defineStore("app", () => {
     const autostartLoading = ref(false);
 
     // --- History ---
-    const sessionHistory = ref<SessionRecord[]>([]);
-    const historyOffset = ref(0);
-    const historyHasMore = ref(true);
-    const historyLoading = ref(false);
-    const analyticsData = ref<AnalyticsData | null>(null);
-    const analyticsLoading = ref(false);
+    const {
+        sessionHistory,
+        historyHasMore,
+        historyLoading,
+        analyticsData,
+        analyticsLoading,
+        loadHistory,
+        loadMoreHistory,
+        loadAnalytics,
+    } = useHistory();
 
     // --- Break Timer ---
     const showFreeActivityOptions = ref(false);
@@ -207,23 +207,25 @@ export const useAppStore = defineStore("app", () => {
     async function hydrateIcons(target: "running" | "settings") {
         const list = target === "running" ? runningApps.value : settingsApps.value;
 
-        for (const app of list) {
-            if (app.icon_data_url) continue;
-            const icon = await fetchAppIcon(app.bundle_id);
-            if (!icon) continue;
+        await Promise.all(
+            list.map(async (app) => {
+                if (app.icon_data_url) return;
+                const icon = await fetchAppIcon(app.bundle_id);
+                if (!icon) return;
 
-            if (target === "running") {
-                const matched = runningApps.value.find(
-                    (item) => item.bundle_id === app.bundle_id,
-                );
-                if (matched) matched.icon_data_url = icon;
-            } else {
-                const matched = settingsApps.value.find(
-                    (item) => item.bundle_id === app.bundle_id,
-                );
-                if (matched) matched.icon_data_url = icon;
-            }
-        }
+                if (target === "running") {
+                    const matched = runningApps.value.find(
+                        (item) => item.bundle_id === app.bundle_id,
+                    );
+                    if (matched) matched.icon_data_url = icon;
+                } else {
+                    const matched = settingsApps.value.find(
+                        (item) => item.bundle_id === app.bundle_id,
+                    );
+                    if (matched) matched.icon_data_url = icon;
+                }
+            })
+        );
     }
 
     function initSelectedFromWhitelist() {
@@ -234,18 +236,27 @@ export const useAppStore = defineStore("app", () => {
     }
 
     async function loadState() {
-        appState.value = await invoke<AppState>("get_state");
-        if (isSupportedLocale(appState.value.locale)) {
-            selectedLocale.value = appState.value.locale;
+        try {
+            appState.value = await invoke<AppState>("get_state");
+            if (isSupportedLocale(appState.value.locale)) {
+                selectedLocale.value = appState.value.locale;
+            }
+        } catch (error) {
+            console.error("Failed to load app state:", error);
         }
     }
 
     async function loadApps(includeIcons = false) {
-        runningApps.value = await invoke<AppInfo[]>("get_running_apps", {
-            includeIcons,
-        });
-        if (!includeIcons) {
-            void hydrateIcons("running");
+        try {
+            runningApps.value = await invoke<AppInfo[]>("get_running_apps", {
+                includeIcons,
+            });
+            if (!includeIcons) {
+                void hydrateIcons("running");
+            }
+        } catch (error) {
+            console.error("Failed to load running apps:", error);
+            runningApps.value = [];
         }
     }
 
@@ -256,49 +267,6 @@ export const useAppStore = defineStore("app", () => {
     function applyRecentTask(task: string) {
         taskDescription.value = task;
         isTaskInputInvalid.value = false;
-    }
-
-    // --- History ---
-
-    async function loadHistory(reset = false) {
-        if (historyLoading.value) return;
-        if (reset) {
-            historyOffset.value = 0;
-            historyHasMore.value = true;
-            sessionHistory.value = [];
-        }
-        if (!historyHasMore.value) return;
-
-        historyLoading.value = true;
-        try {
-            const page = await invoke<HistoryPage>("get_history_page", {
-                offset: historyOffset.value,
-                limit: HISTORY_PAGE_SIZE,
-            });
-            sessionHistory.value = [...sessionHistory.value, ...page.items];
-            historyOffset.value += page.items.length;
-            historyHasMore.value = page.has_more;
-        } catch (e) {
-            console.error("Failed to load history:", e);
-        } finally {
-            historyLoading.value = false;
-        }
-    }
-
-    function loadMoreHistory() {
-        void loadHistory(false);
-    }
-
-    async function loadAnalytics() {
-        analyticsLoading.value = true;
-        try {
-            analyticsData.value = await invoke<AnalyticsData>("get_analytics");
-        } catch (e) {
-            console.error("Failed to load analytics:", e);
-            analyticsData.value = null;
-        } finally {
-            analyticsLoading.value = false;
-        }
     }
 
     // --- Settings ---
@@ -365,7 +333,12 @@ export const useAppStore = defineStore("app", () => {
 
     async function saveSettings() {
         const whitelist = Array.from(settingsWhitelist.value);
-        await invoke("update_settings", { defaultWhitelist: whitelist });
+        try {
+            await invoke("update_settings", { defaultWhitelist: whitelist });
+        } catch (error) {
+            console.error("Failed to update settings:", error);
+            return;
+        }
         appState.value.default_whitelist = whitelist;
 
         autostartLoading.value = true;
@@ -412,12 +385,21 @@ export const useAppStore = defineStore("app", () => {
         allowedAppNames.value = runningApps.value.filter((a) =>
             whitelist.includes(a.bundle_id),
         );
-        await invoke("unlock_session", { whitelist, task });
+        try {
+            await invoke("unlock_session", { whitelist, task });
+        } catch (error) {
+            console.error("Failed to start focus session:", error);
+        }
     }
 
     async function confirmEndFocus() {
         showEndConfirm.value = false;
-        await invoke("lock_session");
+        try {
+            await invoke("lock_session");
+        } catch (error) {
+            console.error("Failed to end focus session:", error);
+            return;
+        }
 
         selectedApps.value = new Set();
         taskDescription.value = "";
@@ -445,7 +427,9 @@ export const useAppStore = defineStore("app", () => {
             if (returnCountdown.value <= 0) {
                 if (countdownInterval) clearInterval(countdownInterval);
                 countdownInterval = null;
-                invoke("switch_to_app", { bundleId: returnBundleId });
+                invoke<void>("switch_to_app", { bundleId: returnBundleId }).catch((error) => {
+                    console.error("Failed to switch back to allowed app:", error);
+                });
             }
         }, 1000);
     }
