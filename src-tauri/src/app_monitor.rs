@@ -250,6 +250,28 @@ pub fn start_monitoring(app: tauri::AppHandle) {
     }
 }
 
+/// A stable fingerprint of the current display layout (positions + sizes).
+/// Used to detect monitors being connected/disconnected or resized.
+/// Call on the main thread.
+#[cfg(target_os = "macos")]
+fn monitors_signature(app: &tauri::AppHandle) -> String {
+    let Some(win) = app.get_webview_window("main") else {
+        return String::new();
+    };
+    let mut parts: Vec<String> = win
+        .available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| {
+            let p = m.position();
+            let s = m.size();
+            format!("{}:{}:{}:{}", p.x, p.y, s.width, s.height)
+        })
+        .collect();
+    parts.sort();
+    parts.join("|")
+}
+
 #[cfg(target_os = "macos")]
 fn start_monitoring_macos(app: tauri::AppHandle) {
     use objc2_app_kit::NSWorkspace;
@@ -262,6 +284,20 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
     let mut last_valid_app_name = String::new();
     let mut blocking_visible = false;
     let mut blocking_shown_at: Option<Instant> = None;
+
+    // Track the display layout so overlays can be rebuilt on hot-plug. All
+    // monitor/window queries run on the main thread (AppKit is not thread-safe).
+    let last_monitor_sig = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    {
+        let app_init = app.clone();
+        let sig_init = last_monitor_sig.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Ok(mut guard) = sig_init.lock() {
+                *guard = monitors_signature(&app_init);
+            }
+        });
+    }
+    let mut display_check_tick: u32 = 0;
 
     loop {
         let workspace = NSWorkspace::sharedWorkspace();
@@ -344,6 +380,46 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                     blocking_shown_at = None;
                 }
             }
+        }
+
+        // Roughly every 2s, rebuild overlays if the display layout changed
+        // (monitor connected/disconnected or resolution change).
+        display_check_tick = display_check_tick.wrapping_add(1);
+        if display_check_tick % 4 == 0 {
+            let app_chk = app.clone();
+            let sig_ref = last_monitor_sig.clone();
+            let was_blocking = blocking_visible;
+            let _ = app.run_on_main_thread(move || {
+                let sig = monitors_signature(&app_chk);
+                let changed = match sig_ref.lock() {
+                    Ok(mut guard) if *guard != sig => {
+                        *guard = sig;
+                        true
+                    }
+                    _ => false,
+                };
+                if !changed {
+                    return;
+                }
+
+                commands::sync_overlays(&app_chk);
+
+                // Re-show overlays if the windows are currently meant to be visible.
+                let main_visible = app_chk
+                    .get_webview_window("main")
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false);
+                if main_visible || was_blocking {
+                    for (label, win) in app_chk.webview_windows() {
+                        if label.starts_with("overlay-") {
+                            if was_blocking {
+                                let _ = win.set_always_on_top(true);
+                            }
+                            let _ = win.show();
+                        }
+                    }
+                }
+            });
         }
 
         /// Interval between frontmost-app polling checks.
