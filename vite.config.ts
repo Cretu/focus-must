@@ -6,7 +6,14 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [vue(), ui()],
+  // Unify the accent on emerald to match the app's custom styling (selected
+  // cards, ambient background, overlay). `success` is aliased to emerald too so
+  // the primary action buttons and allowed-app badges share one accent. Default
+  // neutral `slate` is kept.
+  plugins: [
+    vue(),
+    ui({ ui: { colors: { primary: "emerald", success: "emerald" } } }),
+  ],
 
   build: {
     rollupOptions: {

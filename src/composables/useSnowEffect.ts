@@ -9,10 +9,23 @@ interface SnowEffectOptions {
 }
 
 const DEFAULT_FLAKE_COUNT = 120
+const SNOW_STORAGE_KEY = 'focus-must-snow'
+
+function loadSnowPreference(): boolean {
+    try {
+        return localStorage.getItem(SNOW_STORAGE_KEY) === '1'
+    } catch {
+        return false
+    }
+}
+
+function isLightTheme(): boolean {
+    return document.documentElement.classList.contains('light')
+}
 
 export function useSnowEffect(options?: SnowEffectOptions) {
     const flakeCount = Math.max(0, options?.flakeCount ?? DEFAULT_FLAKE_COUNT)
-    const snowEnabled = ref(false)
+    const snowEnabled = ref(loadSnowPreference())
     const snowCanvas = ref<HTMLCanvasElement | null>(null)
     let animId: number | null = null
     let teardownResize: (() => void) | null = null
@@ -53,10 +66,14 @@ export function useSnowEffect(options?: SnowEffectOptions) {
             if (!snowEnabled.value) return
 
             ctx.clearRect(0, 0, canvas.width, canvas.height)
+            // Snowflakes are white on dark themes; on light themes they'd be
+            // invisible, so fall back to a soft slate-blue tone.
+            const light = isLightTheme()
+            const flakeColor = light ? '148, 163, 184' : '255, 255, 255'
             for (const f of flakes) {
                 ctx.beginPath()
                 ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2)
-                ctx.fillStyle = `rgba(255, 255, 255, ${f.opacity})`
+                ctx.fillStyle = `rgba(${flakeColor}, ${f.opacity})`
                 ctx.fill()
                 f.y += f.speed
                 f.x += f.wind + Math.sin(f.y * 0.01) * 0.3
@@ -80,13 +97,23 @@ export function useSnowEffect(options?: SnowEffectOptions) {
         }
     }
 
-    watch(snowEnabled, (v) => { v ? start() : stop() })
+    watch(snowEnabled, (v) => {
+        try {
+            localStorage.setItem(SNOW_STORAGE_KEY, v ? '1' : '0')
+        } catch {
+            // Ignore storage failures (e.g. private mode); snow still works.
+        }
+        v ? start() : stop()
+    })
     onUnmounted(() => {
         stop()
     })
 
     function setSnowCanvas(el: unknown) {
         snowCanvas.value = el instanceof HTMLCanvasElement ? el : null
+        // Kick off immediately if snow was restored as enabled on load: the
+        // watcher only fires on change, so the first paint needs this nudge.
+        if (snowCanvas.value && snowEnabled.value) start()
     }
 
     return { snowEnabled, setSnowCanvas }

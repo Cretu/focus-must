@@ -234,11 +234,6 @@ pub fn switch_to_app(bundle_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_history() -> Vec<storage::SessionRecord> {
-    storage::load_sessions()
-}
-
-#[tauri::command]
 pub fn get_history_page(offset: Option<u64>, limit: Option<u64>) -> storage::HistoryPage {
     storage::load_sessions_page(offset.unwrap_or(0), limit.unwrap_or(100))
 }

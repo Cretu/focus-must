@@ -29,14 +29,14 @@ function confirmEndFocus() {
         />
 
         <div v-else class="space-y-5">
-            <UIcon name="i-lucide-brain" class="mx-auto block text-6xl text-primary" />
+            <UIcon name="i-lucide-brain" class="focus-brain mx-auto block text-6xl text-primary" />
             <h1 class="text-2xl font-semibold">{{ t("app.keepFocus") }}</h1>
 
             <div class="timer-display">{{ store.formattedTime }}</div>
 
             <UAlert color="neutral" variant="soft">
                 <template #description>
-                    {{ store.taskDescription || t("app.focusTaskFallback") }}
+                    {{ store.currentFocusTask || t("app.focusTaskFallback") }}
                 </template>
             </UAlert>
 
@@ -92,5 +92,33 @@ function confirmEndFocus() {
     font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;
     letter-spacing: 2px;
+    background: linear-gradient(135deg, #34d399, #818cf8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    line-height: 1.05;
+}
+
+.focus-brain {
+    filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.35));
+    animation: brain-breathe 3.6s ease-in-out infinite;
+}
+
+@keyframes brain-breathe {
+    0%,
+    100% {
+        opacity: 0.9;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.06);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .focus-brain {
+        animation: none;
+    }
 }
 </style>

@@ -19,6 +19,7 @@
     "minutesShort": "{minutes}分",
     "custom": "自定义",
     "startFocus": "开始专注",
+    "startFocusShortcutHint": "⌘/Ctrl + Enter 快速开始",
     "settingsTitle": "设置",
     "defaultAllowedApps": "默认允许的 APP",
     "defaultAllowedAppsSubtitle": "配置默认白名单 APP，每次专注时自动选择；请先打开要用的 APP，再点击刷新进行选择",

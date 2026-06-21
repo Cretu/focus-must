@@ -172,6 +172,13 @@ export const useAppStore = defineStore("app", () => {
             .slice(0, 6);
     });
 
+    // The task shown during an active session. Prefer the backend-authoritative
+    // value so the focus card stays correct even if the app is relaunched
+    // mid-session (when the local input ref would be empty).
+    const currentFocusTask = computed(
+        () => appState.value.task_description?.trim() || taskDescription.value.trim(),
+    );
+
     const formattedTime = computed(() => {
         const total = elapsedSeconds.value;
         const hours = Math.floor(total / 3600);
@@ -271,59 +278,81 @@ export const useAppStore = defineStore("app", () => {
 
     // --- Settings ---
 
+    // Reload the running-apps list for the settings view. Recovers any
+    // whitelisted apps that aren't currently running so they stay selectable.
+    // Crucially, this does NOT reset `settingsWhitelist`, so it can be called
+    // from the "Refresh" button without discarding the user's unsaved toggles.
+    async function loadSettingsAppsList() {
+        settingsApps.value = await invoke<AppInfo[]>("get_running_apps", {
+            includeIcons: false,
+        });
+        void hydrateIcons("settings");
+
+        if (settingsWhitelist.value.size === 0) {
+            return;
+        }
+
+        const existing = new Set(
+            settingsApps.value.map((app) => app.bundle_id),
+        );
+        const missingIds = Array.from(settingsWhitelist.value).filter(
+            (bundleId) => !existing.has(bundleId),
+        );
+
+        if (missingIds.length === 0) {
+            return;
+        }
+
+        const recovered = await Promise.all(
+            missingIds.map(async (bundleId) => {
+                try {
+                    const info = await invoke<AppInfo | null>("get_app_info", {
+                        bundleId,
+                        includeIcon: true,
+                    });
+                    if (info) return info;
+                } catch (error) {
+                    console.error(
+                        "Failed to recover default app info:",
+                        bundleId,
+                        error,
+                    );
+                }
+                return {
+                    bundle_id: bundleId,
+                    name: bundleId,
+                    icon_data_url: null,
+                };
+            }),
+        );
+        settingsApps.value = [...recovered, ...settingsApps.value];
+        void hydrateIcons("settings");
+    }
+
     async function openSettings() {
         currentView.value = "settings";
         autostartLoading.value = true;
+        // Seed the form from saved state before loading apps so recovery of
+        // missing whitelisted apps has the right set to work from.
+        settingsWhitelist.value = new Set(appState.value.default_whitelist);
+        settingsLocale.value = appState.value.locale;
         try {
-            settingsApps.value = await invoke<AppInfo[]>("get_running_apps", {
-                includeIcons: false,
-            });
-            void hydrateIcons("settings");
-            settingsWhitelist.value = new Set(appState.value.default_whitelist);
-
-            if (settingsWhitelist.value.size > 0) {
-                const existing = new Set(
-                    settingsApps.value.map((app) => app.bundle_id),
-                );
-                const missingIds = Array.from(settingsWhitelist.value).filter(
-                    (bundleId) => !existing.has(bundleId),
-                );
-
-                if (missingIds.length > 0) {
-                    const recovered = await Promise.all(
-                        missingIds.map(async (bundleId) => {
-                            try {
-                                const info = await invoke<AppInfo | null>(
-                                    "get_app_info",
-                                    { bundleId, includeIcon: true },
-                                );
-                                if (info) return info;
-                            } catch (error) {
-                                console.error(
-                                    "Failed to recover default app info:",
-                                    bundleId,
-                                    error,
-                                );
-                            }
-                            return {
-                                bundle_id: bundleId,
-                                name: bundleId,
-                                icon_data_url: null,
-                            };
-                        }),
-                    );
-                    settingsApps.value = [...recovered, ...settingsApps.value];
-                    void hydrateIcons("settings");
-                }
-            }
-
-            settingsLocale.value = appState.value.locale;
+            await loadSettingsAppsList();
             autostartEnabled.value = await isAutostartEnabled();
         } catch (e) {
             console.error("Failed to open settings:", e);
             autostartEnabled.value = false;
         } finally {
             autostartLoading.value = false;
+        }
+    }
+
+    // Reload the app list without touching the user's unsaved selections.
+    async function refreshSettingsApps() {
+        try {
+            await loadSettingsAppsList();
+        } catch (e) {
+            console.error("Failed to refresh settings apps:", e);
         }
     }
 
@@ -634,12 +663,14 @@ export const useAppStore = defineStore("app", () => {
         isOnBreak,
         recentTaskSuggestions,
         formattedTime,
+        currentFocusTask,
 
         // Actions
         applyRecentTask,
         loadApps,
         toggleApp,
         openSettings,
+        refreshSettingsApps,
         toggleSettingsApp,
         saveSettings,
         openAnalytics,

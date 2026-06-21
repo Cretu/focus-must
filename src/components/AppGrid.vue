@@ -77,11 +77,32 @@ function appNameClass(name: string): string[] {
     background: rgba(255, 255, 255, 0.03);
     cursor: pointer;
     user-select: none;
-    transition: transform 0.2s ease;
+    transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease,
+        border-color 0.18s ease,
+        background 0.18s ease;
 }
 
 .app-item:hover {
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    border-color: rgba(16, 185, 129, 0.5);
+    box-shadow: 0 8px 18px -10px rgba(15, 23, 42, 0.45);
+}
+
+@media (prefers-color-scheme: light) {
+    .app-item {
+        background: rgba(15, 23, 42, 0.025);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-item {
+        transition: none;
+    }
+    .app-item:hover {
+        transform: none;
+    }
 }
 
 .app-item.selected {

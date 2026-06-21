@@ -32,11 +32,22 @@ const recentTaskMenuItems = computed(() =>
     })),
 );
 
+const MAX_BREAK_MINUTES = 480;
+
 function triggerCustomBreak() {
-    if (!store.customMinutes) return;
-    const minutes = Number(store.customMinutes);
-    if (!Number.isFinite(minutes)) return;
-    store.startFreeActivity(minutes);
+    const raw = String(store.customMinutes).trim();
+    if (!raw) return;
+    const minutes = Math.floor(Number(raw));
+    if (!Number.isFinite(minutes) || minutes < 1) return;
+    store.startFreeActivity(Math.min(minutes, MAX_BREAK_MINUTES));
+}
+
+// Allow ⌘/Ctrl + Enter to start a focus session directly from the task box.
+function handleTaskKeydown(event: KeyboardEvent) {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        store.startFocus();
+    }
 }
 </script>
 
@@ -103,6 +114,7 @@ function triggerCustomBreak() {
                                 :highlight="store.isTaskInputInvalid"
                                 :placeholder="t('app.taskPlaceholder')"
                                 @focus="store.isTaskInputInvalid = false"
+                                @keydown="handleTaskKeydown"
                                 :class="['w-full', store.isTaskInputShaking ? 'shake' : '']"
                             />
 
@@ -202,11 +214,17 @@ function triggerCustomBreak() {
                         color="success"
                         variant="solid"
                         block
+                        size="lg"
+                        class="cta-focus"
                         leading-icon="i-lucide-rocket"
                         @click="store.startFocus()"
                     >
                         {{ t("app.startFocus") }}
                     </UButton>
+
+                    <p class="text-center text-[11px] text-muted">
+                        {{ t("app.startFocusShortcutHint") }}
+                    </p>
                 </div>
             </div>
 
@@ -227,6 +245,32 @@ function triggerCustomBreak() {
 </template>
 
 <style scoped>
+.cta-focus {
+    font-weight: 600;
+    box-shadow: 0 10px 24px -8px rgba(16, 185, 129, 0.55);
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.cta-focus:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 30px -8px rgba(16, 185, 129, 0.65);
+}
+
+.cta-focus:active {
+    transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cta-focus {
+        transition: none;
+    }
+    .cta-focus:hover {
+        transform: none;
+    }
+}
+
 .shake {
     animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
