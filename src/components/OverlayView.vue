@@ -3,7 +3,8 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
-import type { AppState } from "../types/contracts";
+import BlockedAppPanel from "./BlockedAppPanel.vue";
+import type { AppState, BlockedAppEvent } from "../types/contracts";
 
 const { t, locale } = useI18n();
 
@@ -50,9 +51,28 @@ const appState = ref<AppState>({
 const elapsedSeconds = ref(0);
 const nowSeconds = ref(Math.floor(Date.now() / 1000));
 const currentQuoteIndex = ref(0);
+
+// Distraction-block state mirrored onto this (secondary) display so blocking is
+// enforced on every monitor, not just the primary. The actual auto-return is
+// driven by the main window; here the countdown is display-only.
+const blockedApp = ref<BlockedAppEvent | null>(null);
+const returnCountdown = ref(3);
+
 let unlistenState: UnlistenFn | null = null;
+let unlistenBlocked: UnlistenFn | null = null;
+let unlistenBlockedCleared: UnlistenFn | null = null;
 let timerInterval: ReturnType<typeof setInterval> | null = null;
 let quoteInterval: ReturnType<typeof setInterval> | null = null;
+let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+function clearBlocked() {
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    blockedApp.value = null;
+    returnCountdown.value = 3;
+}
 
 // --- Computed ---
 const isFocusing = computed(() => appState.value.focus_started_at !== null);
@@ -118,6 +138,31 @@ onMounted(async () => {
         appState.value = event.payload;
     });
 
+    // Mirror the distraction-block UI onto this display.
+    unlistenBlocked = await listen<BlockedAppEvent>("blocked-app", (event) => {
+        blockedApp.value = event.payload;
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+        if (event.payload.return_to_bundle_id) {
+            returnCountdown.value = 3;
+            countdownInterval = setInterval(() => {
+                returnCountdown.value--;
+                if (returnCountdown.value <= 0 && countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+            }, 1000);
+        } else {
+            returnCountdown.value = -1;
+        }
+    });
+
+    unlistenBlockedCleared = await listen("blocked-app-cleared", () => {
+        clearBlocked();
+    });
+
     // Focus timer
     updateTimer();
     timerInterval = setInterval(updateTimer, 1000);
@@ -129,39 +174,52 @@ onMounted(async () => {
 
 onUnmounted(() => {
     if (unlistenState) unlistenState();
+    if (unlistenBlocked) unlistenBlocked();
+    if (unlistenBlockedCleared) unlistenBlockedCleared();
     if (timerInterval) clearInterval(timerInterval);
     if (quoteInterval) clearInterval(quoteInterval);
+    if (countdownInterval) clearInterval(countdownInterval);
 });
 </script>
 
 <template>
     <div class="overlay-screen">
-        <!-- Focus Mode -->
-        <div v-if="isFocusing" class="overlay-content">
-            <UIcon name="i-lucide-brain" class="overlay-icon" />
-            <h1 class="overlay-title">{{ t("app.keepFocus") }}</h1>
-            <div class="overlay-timer">{{ formattedTime }}</div>
-            <p v-if="appState.task_description" class="overlay-task">
-                {{ appState.task_description }}
-            </p>
+        <!-- Distraction Block (mirrored from the main display) -->
+        <div v-if="blockedApp" class="overlay-content overlay-blocked">
+            <BlockedAppPanel
+                :blocked-app-state="blockedApp"
+                :return-countdown="returnCountdown"
+            />
         </div>
 
-        <!-- Break Mode -->
-        <div v-else-if="isOnBreak" class="overlay-content">
-            <UIcon name="i-lucide-coffee" class="overlay-icon icon-break" />
-            <h1 class="overlay-title">{{ t("overlay.breakTitle") }}</h1>
-            <div class="overlay-timer timer-break">{{ breakRemaining }}</div>
-        </div>
+        <template v-else>
+            <!-- Focus Mode -->
+            <div v-if="isFocusing" class="overlay-content">
+                <UIcon name="i-lucide-brain" class="overlay-icon" />
+                <h1 class="overlay-title">{{ t("app.keepFocus") }}</h1>
+                <div class="overlay-timer">{{ formattedTime }}</div>
+                <p v-if="appState.task_description" class="overlay-task">
+                    {{ appState.task_description }}
+                </p>
+            </div>
 
-        <!-- Planning Mode (restricted) -->
-        <div v-else class="overlay-content">
-            <UIcon name="i-lucide-shield-check" class="overlay-icon icon-planning" />
-            <h1 class="overlay-title">Focus Must</h1>
-            <p class="overlay-subtitle">{{ t("overlay.planningHint") }}</p>
-        </div>
+            <!-- Break Mode -->
+            <div v-else-if="isOnBreak" class="overlay-content">
+                <UIcon name="i-lucide-coffee" class="overlay-icon icon-break" />
+                <h1 class="overlay-title">{{ t("overlay.breakTitle") }}</h1>
+                <div class="overlay-timer timer-break">{{ breakRemaining }}</div>
+            </div>
+
+            <!-- Planning Mode (restricted) -->
+            <div v-else class="overlay-content">
+                <UIcon name="i-lucide-shield-check" class="overlay-icon icon-planning" />
+                <h1 class="overlay-title">Focus Must</h1>
+                <p class="overlay-subtitle">{{ t("overlay.planningHint") }}</p>
+            </div>
+        </template>
 
         <!-- Motivational Quote -->
-        <div class="quote-container">
+        <div v-if="!blockedApp" class="quote-container">
             <Transition name="quote-fade" mode="out-in">
                 <div :key="currentQuoteIndex" class="quote-content">
                     <p class="quote-text">{{ currentQuote.text }}</p>
@@ -206,6 +264,11 @@ onUnmounted(() => {
     align-items: center;
     gap: 16px;
     text-align: center;
+}
+
+.overlay-blocked {
+    width: 90%;
+    max-width: 560px;
 }
 
 .overlay-icon {

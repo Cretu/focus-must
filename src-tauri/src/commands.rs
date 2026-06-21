@@ -49,6 +49,95 @@ fn hide_all_overlays(app: &tauri::AppHandle) {
     }
 }
 
+/// Size the main window to the primary monitor and (re)create an overlay window
+/// covering every other monitor, so distraction blocking can be enforced on all
+/// displays. The primary monitor is identified by position — names can be empty
+/// or duplicated on some setups, which previously caused secondary monitors to
+/// be skipped. Existing overlays are torn down first, so this also handles
+/// monitors being connected/disconnected after launch.
+///
+/// Must be called on the main thread (it creates windows). macOS only.
+#[cfg(target_os = "macos")]
+pub fn sync_overlays(app: &tauri::AppHandle) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use tauri::{PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+
+    // Monotonic suffix so a rebuilt overlay never reuses a still-closing label.
+    static OVERLAY_SEQ: AtomicU32 = AtomicU32::new(0);
+
+    let Some(main) = app.get_webview_window("main") else {
+        return;
+    };
+
+    let monitors = main.available_monitors().unwrap_or_default();
+    let primary = main.primary_monitor().ok().flatten();
+    let primary_pos = primary.as_ref().map(|m| {
+        let p = m.position();
+        (p.x, p.y)
+    });
+
+    // Keep the main window matched to the primary monitor.
+    if let Some(ref p) = primary {
+        let size = p.size();
+        let pos = p.position();
+        let _ = main.set_size(PhysicalSize::new(size.width, size.height));
+        let _ = main.set_position(PhysicalPosition::new(pos.x, pos.y));
+    }
+
+    // Tear down existing overlays before rebuilding for the current layout.
+    for (label, win) in app.webview_windows() {
+        if label.starts_with("overlay-") {
+            let _ = win.destroy();
+        }
+    }
+
+    let frontend_url = WebviewUrl::App("index.html".into());
+
+    for monitor in monitors.iter() {
+        let pos = monitor.position();
+        // Skip the primary monitor (already handled by the main window).
+        if Some((pos.x, pos.y)) == primary_pos {
+            continue;
+        }
+
+        let label = format!("overlay-{}", OVERLAY_SEQ.fetch_add(1, Ordering::Relaxed));
+        let size = monitor.size();
+
+        let overlay = match WebviewWindowBuilder::new(app, &label, frontend_url.clone())
+            .title("")
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .resizable(false)
+            .closable(false)
+            .skip_taskbar(true)
+            .visible(false)
+            .build()
+        {
+            Ok(win) => win,
+            Err(error) => {
+                eprintln!("Failed to create overlay window {label}: {error}");
+                continue;
+            }
+        };
+
+        let _ = overlay.set_size(PhysicalSize::new(size.width, size.height));
+        let _ = overlay.set_position(PhysicalPosition::new(pos.x, pos.y));
+
+        // Visible across all Spaces, like the main window.
+        {
+            use objc2::msg_send;
+            if let Ok(ns_window) = overlay.ns_window() {
+                let ns_win: *mut objc2::runtime::AnyObject = ns_window.cast();
+                unsafe {
+                    let behavior: isize = (1 << 0) | (1 << 4);
+                    let _: () = msg_send![&*ns_win, setCollectionBehavior: behavior];
+                }
+            }
+        }
+    }
+}
+
 /// Shared lock-session logic used by both the command and the tray handler.
 pub fn do_lock_session(app: &tauri::AppHandle) {
     {
