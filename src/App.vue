@@ -33,6 +33,10 @@ const nuxtUiLocale = computed(() =>
     store.effectiveLocale === "en-US" ? en : zh_cn,
 );
 
+// During an active session, a manual peek (not a distraction block) shouldn't
+// dim the screen — drop the glass background so the real desktop shows through.
+const isPeeking = computed(() => store.isFocusing && !store.blockedAppState);
+
 onMounted(() => {
     if (!isOverlay) {
         store.initialize();
@@ -52,7 +56,7 @@ onUnmounted(() => {
         <OverlayView v-if="isOverlay" />
 
         <!-- Main window: full app -->
-        <div v-else class="overlay-container">
+        <div v-else class="overlay-container" :class="{ 'is-peeking': isPeeking }">
             <canvas
                 :ref="snowEffect.setSnowCanvas"
                 class="snow-canvas"
@@ -132,6 +136,19 @@ onUnmounted(() => {
         rgba(15, 23, 42, 0.16);
     backdrop-filter: blur(24px) saturate(135%);
     -webkit-backdrop-filter: blur(24px) saturate(135%);
+}
+
+/* Peek mode: no screen dimming during a manual look at an active session.
+   The window is transparent, so the live desktop shows through unmasked. */
+.overlay-container.is-peeking,
+:global(html.light) .overlay-container.is-peeking {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.overlay-container.is-peeking::after {
+    display: none;
 }
 
 /* Soft vignette to focus attention on the centered card */

@@ -165,6 +165,14 @@ pub fn lock_session(app: tauri::AppHandle) {
     do_lock_session(&app);
 }
 
+/// Hide the main window and overlays without touching session state.
+/// Used by "Continue Focus" when the user manually peeks at the app
+/// during an active session.
+#[tauri::command]
+pub fn hide_windows(app: tauri::AppHandle) {
+    hide_all_windows(&app);
+}
+
 #[tauri::command]
 pub fn update_settings(
     state: tauri::State<'_, Mutex<AppState>>,

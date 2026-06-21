@@ -45,6 +45,7 @@
         "returningTo": "Taking you back to {name} ...",
         "manualSwitchHint": "Please use ⌘+Tab to switch back to your work app",
         "keepFocus": "Stay Focused",
+        "continueFocus": "Continue Focus",
         "focusTaskFallback": "Working on an important task...",
         "focusHint": "If you open another app, this window will remind you again.",
         "endFocus": "End Focus",

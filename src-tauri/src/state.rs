@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // ---------------------------------------------------------------------------
@@ -91,15 +91,56 @@ impl AppState {
 // Locale Helpers
 // ---------------------------------------------------------------------------
 
-pub fn detect_system_locale() -> &'static str {
-    let lang = std::env::var("LANG")
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if lang.starts_with("en") {
-        "en-US"
-    } else {
-        "zh-CN"
+/// Read the user's preferred macOS UI language (NSGlobalDomain `AppleLanguages`).
+/// This matches what the webview reports via `navigator.language`, so the tray
+/// stays consistent with the in-app UI. GUI apps usually have no useful `LANG`
+/// env var, which is why the old env-only detection was unreliable.
+#[cfg(target_os = "macos")]
+fn macos_system_language() -> Option<String> {
+    let output = std::process::Command::new("defaults")
+        .args(["read", "-g", "AppleLanguages"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
     }
+    // Output looks like: (\n    "en-US",\n    "zh-Hans-CN"\n)
+    let text = String::from_utf8_lossy(&output.stdout);
+    let first = text.split('"').nth(1)?.trim().to_string();
+    if first.is_empty() {
+        None
+    } else {
+        Some(first)
+    }
+}
+
+/// Detect the effective system language as one of the supported locales.
+/// Cached for the process lifetime: the OS language only changes across an app
+/// relaunch (matching the webview), so this stays cheap on the per-second tray
+/// update path.
+pub fn detect_system_locale() -> &'static str {
+    static CACHE: OnceLock<&'static str> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(lang) = macos_system_language() {
+                return if lang.to_ascii_lowercase().starts_with("en") {
+                    "en-US"
+                } else {
+                    "zh-CN"
+                };
+            }
+        }
+
+        let lang = std::env::var("LANG")
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if lang.starts_with("en") {
+            "en-US"
+        } else {
+            "zh-CN"
+        }
+    })
 }
 
 pub fn normalize_locale(locale: &str) -> &'static str {
