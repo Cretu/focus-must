@@ -19,6 +19,7 @@
         "minutesShort": "{minutes}m",
         "custom": "Custom",
         "startFocus": "Start Focus",
+        "startFocusShortcutHint": "⌘/Ctrl + Enter to start",
         "settingsTitle": "Settings",
         "defaultAllowedApps": "Default Allowed Apps",
         "defaultAllowedAppsSubtitle": "Default whitelist for focus; open apps first, then refresh",

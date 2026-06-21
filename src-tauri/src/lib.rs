@@ -109,7 +109,6 @@ pub fn run() {
             commands::start_free_activity,
             commands::update_settings,
             commands::set_locale,
-            commands::get_history,
             commands::get_history_page,
             commands::get_analytics,
         ])

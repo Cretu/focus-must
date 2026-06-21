@@ -34,7 +34,7 @@ const { t } = useI18n();
                                 <span class="text-xs font-normal">({{ t("app.defaultAllowedAppsSubtitle") }})</span>
                             </div>
                         </div>
-                        <UButton color="neutral" variant="outline" size="xs" @click="store.openSettings()">
+                        <UButton color="neutral" variant="outline" size="xs" @click="store.refreshSettingsApps()">
                             {{ t("app.refresh") }}
                         </UButton>
                     </div>

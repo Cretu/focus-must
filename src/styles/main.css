@@ -26,3 +26,7 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
+
+::selection {
+    background: rgba(16, 185, 129, 0.28);
+}

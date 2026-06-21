@@ -62,7 +62,7 @@ onUnmounted(() => {
             <UCard v-if="store.isBooting" class="w-[min(420px,86vw)]">
                 <div class="space-y-3 text-center">
                     <div class="startup-spinner" aria-hidden="true"></div>
-                    <h1 class="text-xl font-semibold">Focus Must</h1>
+                    <h1 class="brand-title text-xl font-semibold">Focus Must</h1>
                     <UProgress :model-value="null" size="sm" />
                     <p class="text-sm text-muted">
                         {{ $t("app.startupLoadingApps") }}
@@ -110,43 +110,82 @@ onUnmounted(() => {
     padding: 16px;
     background:
         radial-gradient(
-            circle at 18% 14%,
-            rgba(59, 130, 246, 0.08),
-            transparent 42%
+            circle at 16% 12%,
+            rgba(16, 185, 129, 0.1),
+            transparent 44%
         ),
         radial-gradient(
-            circle at 82% 86%,
-            rgba(16, 185, 129, 0.06),
-            transparent 44%
+            circle at 84% 88%,
+            rgba(99, 102, 241, 0.1),
+            transparent 46%
+        ),
+        radial-gradient(
+            circle at 50% -10%,
+            rgba(255, 255, 255, 0.06),
+            transparent 55%
         ),
         linear-gradient(
             135deg,
             rgba(255, 255, 255, 0.05),
             rgba(255, 255, 255, 0.01)
         ),
-        rgba(20, 28, 44, 0.12);
-    backdrop-filter: blur(22px) saturate(130%);
-    -webkit-backdrop-filter: blur(22px) saturate(130%);
+        rgba(15, 23, 42, 0.16);
+    backdrop-filter: blur(24px) saturate(135%);
+    -webkit-backdrop-filter: blur(24px) saturate(135%);
+}
+
+/* Soft vignette to focus attention on the centered card */
+.overlay-container::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+        ellipse at center,
+        transparent 55%,
+        rgba(2, 6, 23, 0.22) 100%
+    );
 }
 
 :global(html.light) .overlay-container {
     background:
         radial-gradient(
-            circle at 18% 14%,
-            rgba(59, 130, 246, 0.035),
-            transparent 42%
+            circle at 16% 12%,
+            rgba(16, 185, 129, 0.06),
+            transparent 44%
         ),
         radial-gradient(
-            circle at 82% 86%,
-            rgba(16, 185, 129, 0.03),
-            transparent 44%
+            circle at 84% 88%,
+            rgba(99, 102, 241, 0.05),
+            transparent 46%
+        ),
+        radial-gradient(
+            circle at 50% -10%,
+            rgba(255, 255, 255, 0.5),
+            transparent 55%
         ),
         linear-gradient(
             135deg,
             rgba(255, 255, 255, 0.08),
             rgba(255, 255, 255, 0.015)
         ),
-        rgba(236, 245, 255, 0.14);
+        rgba(236, 245, 255, 0.16);
+}
+
+:global(html.light) .overlay-container::after {
+    background: radial-gradient(
+        ellipse at center,
+        transparent 60%,
+        rgba(100, 116, 139, 0.12) 100%
+    );
+}
+
+.brand-title {
+    background: linear-gradient(135deg, #34d399, #818cf8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 0.3px;
 }
 
 .startup-spinner {
@@ -154,8 +193,9 @@ onUnmounted(() => {
     height: 52px;
     margin: 0 auto;
     border-radius: 50%;
-    border: 3px solid rgba(255, 255, 255, 0.2);
-    border-top-color: rgba(16, 185, 129, 0.95);
+    border: 3px solid rgba(148, 163, 184, 0.22);
+    border-top-color: #10b981;
+    border-right-color: rgba(129, 140, 248, 0.75);
     animation: spin 0.9s linear infinite;
 }
 

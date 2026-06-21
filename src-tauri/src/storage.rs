@@ -353,46 +353,6 @@ pub fn append_session(record: &SessionRecord) {
     }
 }
 
-pub fn load_sessions() -> Vec<SessionRecord> {
-    with_db(|conn| {
-        let mut stmt = conn
-            .prepare(
-                "
-            SELECT
-                session_type,
-                started_at,
-                ended_at,
-                duration_secs,
-                task,
-                whitelist_json
-            FROM sessions
-            ORDER BY started_at DESC
-            ",
-            )
-            .ok()?;
-
-        let rows = stmt
-            .query_map([], |row| {
-                let whitelist_json: String = row.get(5)?;
-                let whitelist =
-                    serde_json::from_str::<Vec<String>>(&whitelist_json).unwrap_or_else(|_| vec![]);
-
-                Ok(SessionRecord {
-                    session_type: row.get(0)?,
-                    started_at: row.get::<_, i64>(1)? as u64,
-                    ended_at: row.get::<_, i64>(2)? as u64,
-                    duration_secs: row.get::<_, i64>(3)? as u64,
-                    task: row.get(4)?,
-                    whitelist,
-                })
-            })
-            .ok()?;
-
-        Some(rows.filter_map(Result::ok).collect())
-    })
-    .unwrap_or_else(load_sessions_from_jsonl)
-}
-
 pub fn load_sessions_page(offset: u64, limit: u64) -> HistoryPage {
     let limit = limit.clamp(1, 500) as usize;
     let offset = offset.min(i64::MAX as u64) as i64;

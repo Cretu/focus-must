@@ -19,6 +19,15 @@ const maxHourFocusSecs = computed(() => {
     return Math.max(1, ...values);
 });
 
+// Only surface hours that actually contain focus time — rendering all 24
+// buckets (most of them empty) just adds noise.
+const activeHourBuckets = computed(
+    () =>
+        store.analyticsData?.focus_hour_distribution.filter(
+            (bucket) => bucket.focus_secs > 0,
+        ) ?? [],
+);
+
 const DAILY_TREND_PLOT_TOP = 8;
 const DAILY_TREND_PLOT_BOTTOM = 92;
 
@@ -277,8 +286,8 @@ function formatHourLabel(hour: number): string {
                             >
                                 <defs>
                                     <linearGradient id="dailyTrendArea" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stop-color="rgb(34 197 94 / 0.35)" />
-                                        <stop offset="100%" stop-color="rgb(34 197 94 / 0.04)" />
+                                        <stop offset="0%" stop-color="rgb(16 185 129 / 0.35)" />
+                                        <stop offset="100%" stop-color="rgb(16 185 129 / 0.04)" />
                                     </linearGradient>
                                 </defs>
                                 <line
@@ -294,7 +303,7 @@ function formatHourLabel(hour: number): string {
                                 <path
                                     :d="dailyTrendSmoothPath"
                                     fill="none"
-                                    stroke="rgb(34 197 94)"
+                                    stroke="rgb(16 185 129)"
                                     stroke-width="0.35"
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
@@ -351,9 +360,12 @@ function formatHourLabel(hour: number): string {
                             <span>{{ t("app.focusHourDistribution") }}</span>
                         </p>
                     </template>
-                    <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                    <div
+                        v-if="activeHourBuckets.length > 0"
+                        class="grid grid-cols-2 gap-x-6 gap-y-1.5"
+                    >
                         <div
-                            v-for="bucket in store.analyticsData.focus_hour_distribution"
+                            v-for="bucket in activeHourBuckets"
                             :key="bucket.hour"
                             class="grid grid-cols-[100px_1fr_64px] items-center gap-1"
                         >
@@ -363,6 +375,10 @@ function formatHourLabel(hour: number): string {
                                 formatDurationCompact(bucket.focus_secs)
                             }}</span>
                         </div>
+                    </div>
+
+                    <div v-else class="py-6 text-center text-xs text-muted">
+                        {{ t("app.noTrendData") }}
                     </div>
                 </UCard>
             </template>
@@ -422,7 +438,7 @@ function formatHourLabel(hour: number): string {
 .analytics-metric-icon {
     font-size: 40px;
     line-height: 1;
-    color: rgb(34 197 94);
+    color: rgb(16 185 129);
 }
 
 .hour-range-chip {
@@ -431,12 +447,12 @@ function formatHourLabel(hour: number): string {
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    background: color-mix(in oklab, rgb(34 197 94) 14%, transparent);
+    background: color-mix(in oklab, rgb(16 185 129) 14%, transparent);
     padding: 2px 6px;
     font-size: 11px;
     font-weight: 600;
     line-height: 1.2;
-    color: color-mix(in oklab, rgb(34 197 94) 72%, currentColor);
+    color: color-mix(in oklab, rgb(16 185 129) 72%, currentColor);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
