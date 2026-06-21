@@ -105,6 +105,7 @@ pub fn run() {
             commands::get_state,
             commands::unlock_session,
             commands::lock_session,
+            commands::hide_windows,
             commands::switch_to_app,
             commands::start_free_activity,
             commands::update_settings,

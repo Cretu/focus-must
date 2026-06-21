@@ -1,10 +1,20 @@
 <script setup lang="ts">
+import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "../stores/appStore";
 import BlockedAppPanel from "./BlockedAppPanel.vue";
 
 const store = useAppStore();
 const { t } = useI18n();
+
+// Dismiss the window and keep the session running (manual peek → back to work).
+async function continueFocus() {
+    try {
+        await invoke("hide_windows");
+    } catch (error) {
+        console.error("Failed to hide window:", error);
+    }
+}
 
 function requestEndFocus() {
     store.showEndConfirm = true;
@@ -56,7 +66,15 @@ function confirmEndFocus() {
                 </template>
             </UAlert>
 
-            <div class="flex justify-center">
+            <div class="flex justify-center gap-2">
+                <UButton
+                    color="primary"
+                    variant="solid"
+                    leading-icon="i-lucide-arrow-right"
+                    @click="continueFocus"
+                >
+                    {{ t("app.continueFocus") }}
+                </UButton>
                 <UButton
                     color="neutral"
                     variant="outline"
