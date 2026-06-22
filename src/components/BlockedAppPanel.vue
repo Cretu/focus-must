@@ -1,42 +1,52 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
-import type { BlockedAppEvent } from "../types/contracts";
 
 defineProps<{
-    blockedAppState: BlockedAppEvent;
-    returnCountdown: number;
+    appName: string;
+}>();
+
+const emit = defineEmits<{
+    (e: "continue"): void;
+    (e: "tempAllow"): void;
 }>();
 
 const { t } = useI18n();
 </script>
 
 <template>
-    <div class="space-y-4">
-        <UIcon name="i-lucide-circle-x" class="mx-auto block text-6xl text-error" />
-        <UAlert color="error" variant="soft" :title="t('app.blockedDetected')">
+    <div class="space-y-5">
+        <UIcon name="i-lucide-eye-off" class="mx-auto block text-6xl text-primary" />
+        <h1 class="text-2xl font-semibold">{{ t("app.distractionTitle") }}</h1>
+
+        <UAlert
+            color="warning"
+            variant="soft"
+            :title="t('app.distractionCollected', { name: appName })"
+        >
             <template #description>
-                {{ t("app.openedApp", { name: blockedAppState.name }) }}
+                {{ t("app.distractionHint") }}
             </template>
         </UAlert>
 
-        <template v-if="blockedAppState.return_to_bundle_id">
-            <UBadge color="error" variant="soft" class="px-4 py-2 text-base">
-                {{ t("app.returnInSeconds", { seconds: returnCountdown }) }}
-            </UBadge>
-            <UAlert color="neutral" variant="outline">
-                <template #description>
-                    {{ t("app.returningTo", { name: blockedAppState.return_to_name }) }}
-                </template>
-            </UAlert>
-        </template>
+        <div class="flex justify-center gap-2">
+            <UButton
+                color="primary"
+                variant="solid"
+                leading-icon="i-lucide-arrow-left"
+                @click="emit('continue')"
+            >
+                {{ t("app.continueFocus") }}
+            </UButton>
+            <UButton
+                color="neutral"
+                variant="outline"
+                leading-icon="i-lucide-timer"
+                @click="emit('tempAllow')"
+            >
+                {{ t("app.tempUseOnce") }}
+            </UButton>
+        </div>
 
-        <UAlert v-else color="warning" variant="soft">
-            <template #description>
-                <span class="inline-flex items-center gap-1.5">
-                    <UIcon name="i-lucide-triangle-alert" class="text-base" />
-                    <span>{{ t("app.manualSwitchHint") }}</span>
-                </span>
-            </template>
-        </UAlert>
+        <p class="text-xs text-muted">{{ t("app.tempUseNote") }}</p>
     </div>
 </template>

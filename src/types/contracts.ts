@@ -9,8 +9,6 @@ export interface AppInfo {
 export interface BlockedAppEvent {
     name: string;
     bundle_id: string;
-    return_to_bundle_id?: string;
-    return_to_name?: string;
 }
 
 export interface AppState {
@@ -22,6 +20,7 @@ export interface AppState {
     free_activity_started_at: number | null;
     free_activity_end_at: number | null;
     locale: PreferredLocale;
+    temp_allowed: Record<string, number>;
 }
 
 export interface SessionRecord {

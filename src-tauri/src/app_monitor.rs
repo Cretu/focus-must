@@ -279,9 +279,6 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
     use std::time::{Duration, Instant};
 
     let self_bundle_id = app.config().identifier.clone();
-    let mut last_bundle_id = String::new();
-    let mut last_valid_bundle_id = String::new();
-    let mut last_valid_app_name = String::new();
     let mut blocking_visible = false;
     let mut blocking_shown_at: Option<Instant> = None;
 
@@ -308,44 +305,40 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                 .map(|id| id.to_string())
                 .unwrap_or_default();
 
-            // Only react when the frontmost app changes
-            if !bundle_id.is_empty() && bundle_id != last_bundle_id {
-                last_bundle_id = bundle_id.clone();
-
-                if bundle_id == self_bundle_id {
-                    continue;
-                }
-
+            // Skip empty ids and our own prompt window (so the prompt stays up
+            // while the user decides). Everything else is evaluated every tick,
+            // so a temporary pass expiring while the app stays frontmost still
+            // re-collects it.
+            if !bundle_id.is_empty() && bundle_id != self_bundle_id {
                 let current_app_name = front_app
                     .localizedName()
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
-                let state = app.state::<Mutex<AppState>>();
-                let s = lock_mutex(&state);
-                let allowed = s.is_app_allowed(&bundle_id);
-                let is_restricted = s.is_restricted;
-                let is_free_activity = s.free_activity_end_at.is_some();
-                let has_focus_session = s.focus_started_at.is_some();
+                let (allowed, is_restricted, is_free_activity, has_focus_session) = {
+                    let state = app.state::<Mutex<AppState>>();
+                    let s = lock_mutex(&state);
+                    (
+                        s.is_app_allowed(&bundle_id),
+                        s.is_restricted,
+                        s.free_activity_end_at.is_some(),
+                        s.focus_started_at.is_some(),
+                    )
+                };
 
-                drop(s);
+                let should_block =
+                    has_focus_session && is_restricted && !is_free_activity && !allowed;
 
-                if allowed && has_focus_session && !is_free_activity {
-                    last_valid_bundle_id = bundle_id.clone();
-                    last_valid_app_name = current_app_name.clone();
-                }
+                if should_block && !blocking_visible {
+                    // Gently collect the distracting app (Cmd+H equivalent) and
+                    // surface a small prompt, instead of covering every screen
+                    // and forcing a switch back.
+                    let _ = unsafe { front_app.hide() };
 
-                if has_focus_session && is_restricted && !is_free_activity && !allowed {
                     if let Some(win) = app.get_webview_window("main") {
                         let _ = win.set_always_on_top(true);
                         let _ = win.show();
-                    }
-                    // Show overlay windows on all secondary monitors
-                    for (label, win) in app.webview_windows() {
-                        if label.starts_with("overlay-") {
-                            let _ = win.set_always_on_top(true);
-                            let _ = win.show();
-                        }
+                        let _ = win.set_focus();
                     }
 
                     blocking_visible = true;
@@ -356,28 +349,22 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                         serde_json::json!({
                             "name": current_app_name,
                             "bundle_id": bundle_id,
-                            "return_to_bundle_id": if has_focus_session { Some(last_valid_bundle_id.clone()) } else { None },
-                            "return_to_name": if has_focus_session { Some(last_valid_app_name.clone()) } else { None },
                         }),
                     );
-                } else if has_focus_session && is_restricted && !is_free_activity && allowed && blocking_visible {
-                    /// Minimum time the blocking window must remain visible
-                    /// before it can be auto-hidden (prevents flicker).
-                    const BLOCK_WINDOW_MIN_DISPLAY_MS: u64 = 700;
+                } else if !should_block && blocking_visible {
+                    /// Minimum time the prompt stays up before it can auto-dismiss
+                    /// (avoids flicker if the frontmost app changes quickly).
+                    const PROMPT_MIN_DISPLAY_MS: u64 = 500;
                     let can_hide_now = blocking_shown_at
-                        .map(|t| t.elapsed() >= Duration::from_millis(BLOCK_WINDOW_MIN_DISPLAY_MS))
+                        .map(|t| t.elapsed() >= Duration::from_millis(PROMPT_MIN_DISPLAY_MS))
                         .unwrap_or(true);
 
-                    if !can_hide_now {
-                        continue;
+                    if can_hide_now {
+                        commands::hide_all_windows(&app);
+                        let _ = app.emit("blocked-app-cleared", serde_json::Value::Null);
+                        blocking_visible = false;
+                        blocking_shown_at = None;
                     }
-
-                    commands::hide_all_windows(&app);
-
-                    let _ = app.emit("blocked-app-cleared", serde_json::Value::Null);
-
-                    blocking_visible = false;
-                    blocking_shown_at = None;
                 }
             }
         }

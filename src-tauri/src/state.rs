@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -57,6 +58,10 @@ pub struct AppState {
     pub free_activity_started_at: Option<u64>,
     pub free_activity_end_at: Option<u64>,
     pub locale: String,
+    /// Per-app temporary passes: bundle id -> unix expiry. While unexpired, the
+    /// app is allowed even during a restricted focus session ("use once" grace).
+    #[serde(default)]
+    pub temp_allowed: HashMap<String, u64>,
 }
 
 impl Default for AppState {
@@ -70,6 +75,7 @@ impl Default for AppState {
             free_activity_started_at: None,
             free_activity_end_at: None,
             locale: "system".to_string(),
+            temp_allowed: HashMap::new(),
         }
     }
 }
@@ -81,6 +87,11 @@ impl AppState {
         }
         if !self.is_restricted {
             return true;
+        }
+        if let Some(&until) = self.temp_allowed.get(bundle_id) {
+            if until > unix_now_secs() {
+                return true;
+            }
         }
         self.default_whitelist.iter().any(|id| id == bundle_id)
             || self.session_whitelist.iter().any(|id| id == bundle_id)
