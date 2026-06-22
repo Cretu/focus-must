@@ -28,9 +28,14 @@ fn tray_title_updater(app: tauri::AppHandle) {
         thread::sleep(Duration::from_secs(TRAY_TITLE_UPDATE_INTERVAL_SECS));
 
         let state = app.state::<Mutex<AppState>>();
-        let (started_at, free_end_at, locale) = {
+        let (started_at, free_end_at, locale, temp_allowed) = {
             let s = lock_mutex(&state);
-            (s.focus_started_at, s.free_activity_end_at, s.locale.clone())
+            (
+                s.focus_started_at,
+                s.free_activity_end_at,
+                s.locale.clone(),
+                s.temp_allowed.clone(),
+            )
         };
 
         let title = if let Some(start_ts) = started_at {
@@ -41,7 +46,15 @@ fn tray_title_updater(app: tauri::AppHandle) {
             let mins = (elapsed % 3600) / 60;
             let secs = elapsed % 60;
 
-            tray_title_focus(&locale, hours, mins, secs)
+            let mut title = tray_title_focus(&locale, hours, mins, secs);
+
+            // Append the soonest active temporary-pass countdown, if any.
+            if let Some(min_until) = temp_allowed.values().copied().filter(|u| *u > now).min() {
+                let remaining = min_until - now;
+                title = format!("{title}  ⏳{}:{:02}", remaining / 60, remaining % 60);
+            }
+
+            title
         } else if let Some(end_ts) = free_end_at {
             let now = unix_now_secs();
 
@@ -107,6 +120,7 @@ pub fn run() {
             commands::hide_windows,
             commands::switch_to_app,
             commands::allow_app_temporarily,
+            commands::dismiss_distraction,
             commands::start_free_activity,
             commands::update_settings,
             commands::set_locale,
@@ -274,6 +288,9 @@ pub fn run() {
                 // Size the main window to the primary monitor and create overlay
                 // windows covering every secondary monitor.
                 commands::sync_overlays(app.handle());
+
+                // Small modal window used for the distraction prompt.
+                commands::create_prompt_window(app.handle());
             }
 
             commands::show_main_window(app.handle(), false);

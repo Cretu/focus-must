@@ -62,6 +62,12 @@ pub struct AppState {
     /// app is allowed even during a restricted focus session ("use once" grace).
     #[serde(default)]
     pub temp_allowed: HashMap<String, u64>,
+    /// Whether the distraction prompt window is currently shown. Shared so the
+    /// monitor thread and the frontend commands can coordinate (the prompt
+    /// stays up until the user chooses, instead of auto-dismissing). Not
+    /// persisted or sent to the frontend.
+    #[serde(skip)]
+    pub prompt_active: bool,
 }
 
 impl Default for AppState {
@@ -76,6 +82,7 @@ impl Default for AppState {
             free_activity_end_at: None,
             locale: "system".to_string(),
             temp_allowed: HashMap::new(),
+            prompt_active: false,
         }
     }
 }

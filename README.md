@@ -64,6 +64,7 @@
 - `unlock_session` / `lock_session`
 - `start_free_activity`
 - `switch_to_app`
+- `allow_app_temporarily` / `dismiss_distraction`
 - `update_settings` / `set_locale`
 - `get_history_page`
 - `get_analytics`
@@ -71,7 +72,7 @@
 后端推送的主要事件：
 
 - `state-changed`
-- `blocked-app` / `blocked-app-cleared`
+- `blocked-app`（分心提示，携带被收起的 App 名称/包名）
 - `show-view`
 
 ## 数据与本地存储

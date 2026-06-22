@@ -2,7 +2,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "../stores/appStore";
-import BlockedAppPanel from "./BlockedAppPanel.vue";
 
 const store = useAppStore();
 const { t } = useI18n();
@@ -32,14 +31,7 @@ function confirmEndFocus() {
 
 <template>
     <UCard class="w-[min(760px,90vw)] text-center">
-        <BlockedAppPanel
-            v-if="store.blockedAppState"
-            :app-name="store.blockedAppState.name"
-            @continue="store.dismissDistraction()"
-            @temp-allow="store.allowDistractionTemporarily(2)"
-        />
-
-        <div v-else class="space-y-5">
+        <div class="space-y-5">
             <UIcon name="i-lucide-brain" class="focus-brain mx-auto block text-6xl text-primary" />
             <h1 class="text-2xl font-semibold">{{ t("app.keepFocus") }}</h1>
 
