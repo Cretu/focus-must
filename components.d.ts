@@ -18,6 +18,7 @@ declare module 'vue' {
     HistoryList: typeof import('./src/components/HistoryList.vue')['default']
     OverlayView: typeof import('./src/components/OverlayView.vue')['default']
     PlanningView: typeof import('./src/components/PlanningView.vue')['default']
+    PromptView: typeof import('./src/components/PromptView.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingsView: typeof import('./src/components/SettingsView.vue')['default']

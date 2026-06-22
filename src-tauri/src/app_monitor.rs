@@ -276,11 +276,9 @@ fn monitors_signature(app: &tauri::AppHandle) -> String {
 fn start_monitoring_macos(app: tauri::AppHandle) {
     use objc2_app_kit::NSWorkspace;
     use std::thread;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     let self_bundle_id = app.config().identifier.clone();
-    let mut blocking_visible = false;
-    let mut blocking_shown_at: Option<Instant> = None;
 
     // Track the display layout so overlays can be rebuilt on hot-plug. All
     // monitor/window queries run on the main thread (AppKit is not thread-safe).
@@ -315,56 +313,53 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
-                let (allowed, is_restricted, is_free_activity, has_focus_session) = {
+                let (allowed, is_restricted, is_free_activity, has_focus_session, prompt_active, had_temp) = {
                     let state = app.state::<Mutex<AppState>>();
                     let s = lock_mutex(&state);
+                    let allowed = s.is_app_allowed(&bundle_id);
                     (
-                        s.is_app_allowed(&bundle_id),
+                        allowed,
                         s.is_restricted,
                         s.free_activity_end_at.is_some(),
                         s.focus_started_at.is_some(),
+                        s.prompt_active,
+                        // Had a temporary pass that has now expired.
+                        s.temp_allowed.contains_key(&bundle_id) && !allowed,
                     )
                 };
 
                 let should_block =
                     has_focus_session && is_restricted && !is_free_activity && !allowed;
 
-                if should_block && !blocking_visible {
-                    // Gently collect the distracting app (Cmd+H equivalent) and
-                    // surface a small prompt, instead of covering every screen
-                    // and forcing a switch back.
+                // Show the prompt only on the rising edge; it then stays up until
+                // the user chooses (dismissal clears `prompt_active`).
+                if should_block && !prompt_active {
+                    {
+                        let state = app.state::<Mutex<AppState>>();
+                        let mut s = lock_mutex(&state);
+                        s.prompt_active = true;
+                        // Drop the expired pass so the tray countdown stops.
+                        s.temp_allowed.remove(&bundle_id);
+                    }
+
+                    // Gently collect the distracting app (Cmd+H equivalent).
                     let _ = unsafe { front_app.hide() };
 
-                    if let Some(win) = app.get_webview_window("main") {
-                        let _ = win.set_always_on_top(true);
-                        let _ = win.show();
-                        let _ = win.set_focus();
+                    // Audible cue when a temporary pass has just expired.
+                    if had_temp {
+                        commands::play_sound("Submarine");
                     }
 
-                    blocking_visible = true;
-                    blocking_shown_at = Some(Instant::now());
-
-                    let _ = app.emit(
-                        "blocked-app",
-                        serde_json::json!({
-                            "name": current_app_name,
-                            "bundle_id": bundle_id,
-                        }),
-                    );
-                } else if !should_block && blocking_visible {
-                    /// Minimum time the prompt stays up before it can auto-dismiss
-                    /// (avoids flicker if the frontmost app changes quickly).
-                    const PROMPT_MIN_DISPLAY_MS: u64 = 500;
-                    let can_hide_now = blocking_shown_at
-                        .map(|t| t.elapsed() >= Duration::from_millis(PROMPT_MIN_DISPLAY_MS))
-                        .unwrap_or(true);
-
-                    if can_hide_now {
-                        commands::hide_all_windows(&app);
-                        let _ = app.emit("blocked-app-cleared", serde_json::Value::Null);
-                        blocking_visible = false;
-                        blocking_shown_at = None;
-                    }
+                    let name = current_app_name.clone();
+                    let bid = bundle_id.clone();
+                    let app_for_prompt = app.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        let _ = app_for_prompt.emit(
+                            "blocked-app",
+                            serde_json::json!({ "name": name, "bundle_id": bid }),
+                        );
+                        commands::show_prompt_window(&app_for_prompt);
+                    });
                 }
             }
         }
@@ -375,7 +370,6 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
         if display_check_tick % 4 == 0 {
             let app_chk = app.clone();
             let sig_ref = last_monitor_sig.clone();
-            let was_blocking = blocking_visible;
             let _ = app.run_on_main_thread(move || {
                 let sig = monitors_signature(&app_chk);
                 let changed = match sig_ref.lock() {
@@ -396,12 +390,9 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                     .get_webview_window("main")
                     .and_then(|w| w.is_visible().ok())
                     .unwrap_or(false);
-                if main_visible || was_blocking {
+                if main_visible {
                     for (label, win) in app_chk.webview_windows() {
                         if label.starts_with("overlay-") {
-                            if was_blocking {
-                                let _ = win.set_always_on_top(true);
-                            }
                             let _ = win.show();
                         }
                     }

@@ -14,11 +14,7 @@ import {
     type PreferredLocale,
 } from "../i18n";
 import { useHistory } from "../composables/useHistory";
-import type {
-    AppInfo,
-    AppState,
-    BlockedAppEvent,
-} from "../types/contracts";
+import type { AppInfo, AppState } from "../types/contracts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,9 +101,6 @@ export const useAppStore = defineStore("app", () => {
     const showEndConfirm = ref(false);
     const allowedAppNames = ref<AppInfo[]>([]);
 
-    // --- Blocked App (distraction prompt) ---
-    const blockedAppState = ref<BlockedAppEvent | null>(null);
-
     // --- Settings ---
     const settingsApps = ref<AppInfo[]>([]);
     const settingsWhitelist = ref<Set<string>>(new Set());
@@ -135,8 +128,6 @@ export const useAppStore = defineStore("app", () => {
 
     // --- Event listeners ---
     let unlistenState: UnlistenFn | null = null;
-    let unlistenBlocked: UnlistenFn | null = null;
-    let unlistenBlockedCleared: UnlistenFn | null = null;
     let unlistenShowView: UnlistenFn | null = null;
     let timerInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -192,38 +183,6 @@ export const useAppStore = defineStore("app", () => {
     // ---------------------------------------------------------------------------
     // Actions
     // ---------------------------------------------------------------------------
-
-    function clearBlockedState() {
-        blockedAppState.value = null;
-    }
-
-    // Distraction prompt actions. The distracting app has already been collected
-    // (hidden) by the backend; here the user chooses what happens next.
-
-    /** Keep focusing: dismiss the prompt and leave the app collected. */
-    async function dismissDistraction() {
-        blockedAppState.value = null;
-        try {
-            await invoke("hide_windows");
-        } catch (error) {
-            console.error("Failed to dismiss distraction prompt:", error);
-        }
-    }
-
-    /** Use the app anyway: grant a temporary pass and bring it back. */
-    async function allowDistractionTemporarily(minutes = 2) {
-        const bundleId = blockedAppState.value?.bundle_id;
-        blockedAppState.value = null;
-        if (!bundleId) return;
-        try {
-            await invoke("allow_app_temporarily", {
-                bundleId,
-                durationMinutes: minutes,
-            });
-        } catch (error) {
-            console.error("Failed to grant temporary pass:", error);
-        }
-    }
 
     function updateTimer() {
         if (appState.value.focus_started_at) {
@@ -523,7 +482,6 @@ export const useAppStore = defineStore("app", () => {
                 timerInterval = null;
                 elapsedSeconds.value = 0;
                 showEndConfirm.value = false;
-                clearBlockedState();
             }
         },
     );
@@ -578,17 +536,6 @@ export const useAppStore = defineStore("app", () => {
                 void loadHistory(true);
             });
 
-            unlistenBlocked = await listen<BlockedAppEvent>(
-                "blocked-app",
-                (event) => {
-                    blockedAppState.value = event.payload;
-                },
-            );
-
-            unlistenBlockedCleared = await listen("blocked-app-cleared", () => {
-                clearBlockedState();
-            });
-
             unlistenShowView = await listen<string>("show-view", (event) => {
                 if (event.payload === "settings") {
                     openSettings();
@@ -615,8 +562,6 @@ export const useAppStore = defineStore("app", () => {
 
     function cleanup() {
         if (unlistenState) unlistenState();
-        if (unlistenBlocked) unlistenBlocked();
-        if (unlistenBlockedCleared) unlistenBlockedCleared();
         if (unlistenShowView) unlistenShowView();
         if (timerInterval) clearInterval(timerInterval);
         stopBreakTimer();
@@ -635,7 +580,6 @@ export const useAppStore = defineStore("app", () => {
         elapsedSeconds,
         showEndConfirm,
         allowedAppNames,
-        blockedAppState,
         settingsApps,
         settingsWhitelist,
         settingsLocale,
@@ -671,8 +615,6 @@ export const useAppStore = defineStore("app", () => {
         startFocus,
         confirmEndFocus,
         startFreeActivity,
-        dismissDistraction,
-        allowDistractionTemporarily,
         loadMoreHistory,
 
         // Lifecycle

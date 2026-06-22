@@ -9,6 +9,9 @@ import { localeOptionsWithText } from "./i18n";
 const OverlayView = defineAsyncComponent(
     () => import("./components/OverlayView.vue"),
 );
+const PromptView = defineAsyncComponent(
+    () => import("./components/PromptView.vue"),
+);
 const PlanningView = defineAsyncComponent(
     () => import("./components/PlanningView.vue"),
 );
@@ -22,8 +25,10 @@ const AnalyticsView = defineAsyncComponent(
     () => import("./components/AnalyticsView.vue"),
 );
 
-// Detect if this window is an overlay (secondary monitor)
-const isOverlay = getCurrentWindow().label.startsWith("overlay-");
+// Detect this window's role from its label.
+const windowLabel = getCurrentWindow().label;
+const isOverlay = windowLabel.startsWith("overlay-");
+const isPrompt = windowLabel === "prompt";
 
 const store = useAppStore();
 const snowEffect = useSnowEffect();
@@ -33,18 +38,18 @@ const nuxtUiLocale = computed(() =>
     store.effectiveLocale === "en-US" ? en : zh_cn,
 );
 
-// During an active session, a manual peek (not a distraction block) shouldn't
-// dim the screen — drop the glass background so the real desktop shows through.
-const isPeeking = computed(() => store.isFocusing && !store.blockedAppState);
+// During an active session, a manual peek shouldn't dim the screen — drop the
+// glass background so the real desktop shows through.
+const isPeeking = computed(() => store.isFocusing);
 
 onMounted(() => {
-    if (!isOverlay) {
+    if (!isOverlay && !isPrompt) {
         store.initialize();
     }
 });
 
 onUnmounted(() => {
-    if (!isOverlay) {
+    if (!isOverlay && !isPrompt) {
         store.cleanup();
     }
 });
@@ -52,8 +57,11 @@ onUnmounted(() => {
 
 <template>
     <UApp :locale="nuxtUiLocale">
+        <!-- Distraction prompt window: small modal -->
+        <PromptView v-if="isPrompt" />
+
         <!-- Overlay window: dedicated focus view -->
-        <OverlayView v-if="isOverlay" />
+        <OverlayView v-else-if="isOverlay" />
 
         <!-- Main window: full app -->
         <div v-else class="overlay-container" :class="{ 'is-peeking': isPeeking }">

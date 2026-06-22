@@ -22,12 +22,57 @@ pub fn show_main_window(app: &tauri::AppHandle, always_on_top: bool) {
     show_all_overlays(app, always_on_top);
 }
 
-/// Hide the main window and all overlay windows.
+/// Hide the main window, the distraction prompt, and all overlay windows.
+/// Also clears the shared `prompt_active` flag.
 pub fn hide_all_windows(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.hide();
     }
+    if let Some(win) = app.get_webview_window("prompt") {
+        let _ = win.hide();
+    }
     hide_all_overlays(app);
+
+    if let Some(state) = app.try_state::<Mutex<AppState>>() {
+        lock_mutex(&state).prompt_active = false;
+    }
+}
+
+/// Show the distraction prompt centered on the monitor under the cursor
+/// (falling back to the primary monitor). Small modal window — not a cover.
+/// Call on the main thread.
+pub fn show_prompt_window(app: &tauri::AppHandle) {
+    let Some(prompt) = app.get_webview_window("prompt") else {
+        return;
+    };
+
+    let target = prompt
+        .cursor_position()
+        .ok()
+        .and_then(|p| prompt.monitor_from_point(p.x, p.y).ok().flatten())
+        .or_else(|| prompt.primary_monitor().ok().flatten());
+
+    if let Some(mon) = target {
+        let mpos = mon.position();
+        let msize = mon.size();
+        if let Ok(wsize) = prompt.outer_size() {
+            let x = mpos.x + (msize.width as i32 - wsize.width as i32) / 2;
+            let y = mpos.y + (msize.height as i32 - wsize.height as i32) / 2;
+            let _ = prompt.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+    }
+
+    let _ = prompt.set_always_on_top(true);
+    let _ = prompt.show();
+    let _ = prompt.set_focus();
+}
+
+/// Play a built-in macOS system sound by name (e.g. "Submarine", "Glass").
+/// Non-blocking; failures are ignored (e.g. on non-macOS).
+pub fn play_sound(name: &str) {
+    let _ = std::process::Command::new("afplay")
+        .arg(format!("/System/Library/Sounds/{name}.aiff"))
+        .spawn();
 }
 
 /// Show all overlay windows on secondary monitors.
@@ -133,6 +178,49 @@ pub fn sync_overlays(app: &tauri::AppHandle) {
                     let behavior: isize = (1 << 0) | (1 << 4);
                     let _: () = msg_send![&*ns_win, setCollectionBehavior: behavior];
                 }
+            }
+        }
+    }
+}
+
+/// Create the small distraction-prompt window (hidden until needed). macOS only.
+#[cfg(target_os = "macos")]
+pub fn create_prompt_window(app: &tauri::AppHandle) {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+
+    if app.get_webview_window("prompt").is_some() {
+        return;
+    }
+
+    let url = WebviewUrl::App("index.html".into());
+    let win = match WebviewWindowBuilder::new(app, "prompt", url)
+        .title("")
+        .inner_size(460.0, 400.0)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .resizable(false)
+        .closable(false)
+        .skip_taskbar(true)
+        .visible(false)
+        .center()
+        .build()
+    {
+        Ok(win) => win,
+        Err(error) => {
+            eprintln!("Failed to create prompt window: {error}");
+            return;
+        }
+    };
+
+    // Visible across all Spaces, like the other windows.
+    {
+        use objc2::msg_send;
+        if let Ok(ns_window) = win.ns_window() {
+            let ns_win: *mut objc2::runtime::AnyObject = ns_window.cast();
+            unsafe {
+                let behavior: isize = (1 << 0) | (1 << 4);
+                let _: () = msg_send![&*ns_win, setCollectionBehavior: behavior];
             }
         }
     }
@@ -330,6 +418,12 @@ pub fn switch_to_app(bundle_id: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("Failed to switch to app {bundle_id}: {error}"))
+}
+
+/// Dismiss the distraction prompt and keep focusing (the app stays collected).
+#[tauri::command]
+pub fn dismiss_distraction(app: tauri::AppHandle) {
+    hide_all_windows(&app);
 }
 
 /// Grant a distracting app a temporary pass: allow it for `duration_minutes`,
