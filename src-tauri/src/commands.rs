@@ -238,6 +238,8 @@ pub fn unlock_session(
         s.task_description = Some(task);
         s.focus_started_at = Some(unix_now_secs());
         s.free_activity_end_at = None;
+        // Start each focus session with a clean slate of temporary passes.
+        s.temp_allowed.clear();
         let _ = app.emit("state-changed", s.clone());
     }
 
@@ -328,6 +330,31 @@ pub fn switch_to_app(bundle_id: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("Failed to switch to app {bundle_id}: {error}"))
+}
+
+/// Grant a distracting app a temporary pass: allow it for `duration_minutes`,
+/// bring it back to the foreground, and dismiss the distraction prompt. Once the
+/// grace period expires the app is collected again on the next check.
+#[tauri::command]
+pub fn allow_app_temporarily(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Mutex<AppState>>,
+    bundle_id: String,
+    duration_minutes: u64,
+) {
+    {
+        let mut s = lock_mutex(&state);
+        let until = unix_now_secs() + duration_minutes.max(1) * 60;
+        s.temp_allowed.insert(bundle_id.clone(), until);
+        let _ = app.emit("state-changed", s.clone());
+    }
+
+    // Bring the app back so the user can use it during the grace period.
+    let _ = std::process::Command::new("open")
+        .args(["-b", &bundle_id])
+        .spawn();
+
+    hide_all_windows(&app);
 }
 
 #[tauri::command]

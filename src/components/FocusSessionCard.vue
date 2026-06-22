@@ -34,8 +34,9 @@ function confirmEndFocus() {
     <UCard class="w-[min(760px,90vw)] text-center">
         <BlockedAppPanel
             v-if="store.blockedAppState"
-            :blocked-app-state="store.blockedAppState"
-            :return-countdown="store.returnCountdown"
+            :app-name="store.blockedAppState.name"
+            @continue="store.dismissDistraction()"
+            @temp-allow="store.allowDistractionTemporarily(2)"
         />
 
         <div v-else class="space-y-5">

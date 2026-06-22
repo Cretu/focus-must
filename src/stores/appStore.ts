@@ -93,6 +93,7 @@ export const useAppStore = defineStore("app", () => {
         free_activity_started_at: null,
         free_activity_end_at: null,
         locale: "system",
+        temp_allowed: {},
     });
 
     const isTaskInputShaking = ref(false);
@@ -104,9 +105,8 @@ export const useAppStore = defineStore("app", () => {
     const showEndConfirm = ref(false);
     const allowedAppNames = ref<AppInfo[]>([]);
 
-    // --- Blocked App ---
+    // --- Blocked App (distraction prompt) ---
     const blockedAppState = ref<BlockedAppEvent | null>(null);
-    const returnCountdown = ref(3);
 
     // --- Settings ---
     const settingsApps = ref<AppInfo[]>([]);
@@ -139,7 +139,6 @@ export const useAppStore = defineStore("app", () => {
     let unlistenBlockedCleared: UnlistenFn | null = null;
     let unlistenShowView: UnlistenFn | null = null;
     let timerInterval: ReturnType<typeof setInterval> | null = null;
-    let countdownInterval: ReturnType<typeof setInterval> | null = null;
 
     // ---------------------------------------------------------------------------
     // Derived State
@@ -195,12 +194,35 @@ export const useAppStore = defineStore("app", () => {
     // ---------------------------------------------------------------------------
 
     function clearBlockedState() {
-        if (countdownInterval) {
-            clearInterval(countdownInterval);
-            countdownInterval = null;
-        }
         blockedAppState.value = null;
-        returnCountdown.value = 3;
+    }
+
+    // Distraction prompt actions. The distracting app has already been collected
+    // (hidden) by the backend; here the user chooses what happens next.
+
+    /** Keep focusing: dismiss the prompt and leave the app collected. */
+    async function dismissDistraction() {
+        blockedAppState.value = null;
+        try {
+            await invoke("hide_windows");
+        } catch (error) {
+            console.error("Failed to dismiss distraction prompt:", error);
+        }
+    }
+
+    /** Use the app anyway: grant a temporary pass and bring it back. */
+    async function allowDistractionTemporarily(minutes = 2) {
+        const bundleId = blockedAppState.value?.bundle_id;
+        blockedAppState.value = null;
+        if (!bundleId) return;
+        try {
+            await invoke("allow_app_temporarily", {
+                bundleId,
+                durationMinutes: minutes,
+            });
+        } catch (error) {
+            console.error("Failed to grant temporary pass:", error);
+        }
     }
 
     function updateTimer() {
@@ -438,31 +460,6 @@ export const useAppStore = defineStore("app", () => {
         await loadHistory(true);
     }
 
-    function startReturnCountdown() {
-        if (countdownInterval) {
-            clearInterval(countdownInterval);
-            countdownInterval = null;
-        }
-
-        if (!blockedAppState.value?.return_to_bundle_id) {
-            returnCountdown.value = -1;
-            return;
-        }
-
-        const returnBundleId = blockedAppState.value.return_to_bundle_id;
-        returnCountdown.value = 3;
-        countdownInterval = setInterval(() => {
-            returnCountdown.value--;
-            if (returnCountdown.value <= 0) {
-                if (countdownInterval) clearInterval(countdownInterval);
-                countdownInterval = null;
-                invoke<void>("switch_to_app", { bundleId: returnBundleId }).catch((error) => {
-                    console.error("Failed to switch back to allowed app:", error);
-                });
-            }
-        }, 1000);
-    }
-
     // --- Break Timer ---
 
     function stopBreakTimer() {
@@ -585,7 +582,6 @@ export const useAppStore = defineStore("app", () => {
                 "blocked-app",
                 (event) => {
                     blockedAppState.value = event.payload;
-                    startReturnCountdown();
                 },
             );
 
@@ -623,7 +619,6 @@ export const useAppStore = defineStore("app", () => {
         if (unlistenBlockedCleared) unlistenBlockedCleared();
         if (unlistenShowView) unlistenShowView();
         if (timerInterval) clearInterval(timerInterval);
-        if (countdownInterval) clearInterval(countdownInterval);
         stopBreakTimer();
     }
 
@@ -641,7 +636,6 @@ export const useAppStore = defineStore("app", () => {
         showEndConfirm,
         allowedAppNames,
         blockedAppState,
-        returnCountdown,
         settingsApps,
         settingsWhitelist,
         settingsLocale,
@@ -677,6 +671,8 @@ export const useAppStore = defineStore("app", () => {
         startFocus,
         confirmEndFocus,
         startFreeActivity,
+        dismissDistraction,
+        allowDistractionTemporarily,
         loadMoreHistory,
 
         // Lifecycle
