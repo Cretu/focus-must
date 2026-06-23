@@ -46,10 +46,25 @@ pub fn show_prompt_window(app: &tauri::AppHandle) {
         return;
     };
 
-    let target = prompt
-        .cursor_position()
-        .ok()
-        .and_then(|p| prompt.monitor_from_point(p.x, p.y).ok().flatten())
+    // Pick the monitor whose physical rect contains the cursor. cursor_position
+    // and monitor positions are both global physical pixels, so this is
+    // coordinate-consistent (unlike monitor_from_point's unit assumptions).
+    let cursor = prompt.cursor_position().ok();
+    let target = cursor
+        .and_then(|c| {
+            prompt
+                .available_monitors()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|m| {
+                    let p = m.position();
+                    let s = m.size();
+                    c.x >= p.x as f64
+                        && c.x < p.x as f64 + s.width as f64
+                        && c.y >= p.y as f64
+                        && c.y < p.y as f64 + s.height as f64
+                })
+        })
         .or_else(|| prompt.primary_monitor().ok().flatten());
 
     if let Some(mon) = target {
@@ -203,7 +218,6 @@ pub fn create_prompt_window(app: &tauri::AppHandle) {
         .closable(false)
         .skip_taskbar(true)
         .visible(false)
-        .center()
         .build()
     {
         Ok(win) => win,
