@@ -58,6 +58,10 @@ pub struct AppState {
     pub free_activity_started_at: Option<u64>,
     pub free_activity_end_at: Option<u64>,
     pub locale: String,
+    /// Break-reminder interval in minutes for the active focus session
+    /// (0 = no reminder). Set when a focus session starts.
+    #[serde(default)]
+    pub focus_goal_minutes: u64,
     /// Per-app temporary passes: bundle id -> unix expiry. While unexpired, the
     /// app is allowed even during a restricted focus session ("use once" grace).
     #[serde(default)]
@@ -81,6 +85,7 @@ impl Default for AppState {
             free_activity_started_at: None,
             free_activity_end_at: None,
             locale: "system".to_string(),
+            focus_goal_minutes: 0,
             temp_allowed: HashMap::new(),
             prompt_active: false,
         }

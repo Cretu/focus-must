@@ -316,6 +316,7 @@ pub fn unlock_session(
     tray_state: tauri::State<'_, Mutex<TrayMenuState>>,
     whitelist: Vec<String>,
     task: String,
+    focus_goal_minutes: Option<u64>,
 ) {
     {
         let mut s = lock_mutex(&state);
@@ -326,6 +327,7 @@ pub fn unlock_session(
         s.task_description = Some(task);
         s.focus_started_at = Some(unix_now_secs());
         s.free_activity_end_at = None;
+        s.focus_goal_minutes = focus_goal_minutes.unwrap_or(0);
         // Start each focus session with a clean slate of temporary passes.
         s.temp_allowed.clear();
         let _ = app.emit("state-changed", s.clone());

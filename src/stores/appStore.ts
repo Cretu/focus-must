@@ -89,6 +89,7 @@ export const useAppStore = defineStore("app", () => {
         free_activity_started_at: null,
         free_activity_end_at: null,
         locale: "system",
+        focus_goal_minutes: 0,
         temp_allowed: {},
     });
 
@@ -100,6 +101,12 @@ export const useAppStore = defineStore("app", () => {
     const elapsedSeconds = ref(0);
     const showEndConfirm = ref(false);
     const allowedAppNames = ref<AppInfo[]>([]);
+
+    // --- Focus duration / break reminder ---
+    // 0 = no reminder; otherwise remind to take a break every N minutes.
+    const focusGoalMinutes = ref(0);
+    const showBreakReminder = ref(false);
+    const breakReminderMinutes = ref(0);
 
     // --- Settings ---
     const settingsApps = ref<AppInfo[]>([]);
@@ -129,6 +136,7 @@ export const useAppStore = defineStore("app", () => {
     // --- Event listeners ---
     let unlistenState: UnlistenFn | null = null;
     let unlistenShowView: UnlistenFn | null = null;
+    let unlistenGoalReached: UnlistenFn | null = null;
     let timerInterval: ReturnType<typeof setInterval> | null = null;
 
     // ---------------------------------------------------------------------------
@@ -396,10 +404,27 @@ export const useAppStore = defineStore("app", () => {
             whitelist.includes(a.bundle_id),
         );
         try {
-            await invoke("unlock_session", { whitelist, task });
+            await invoke("unlock_session", {
+                whitelist,
+                task,
+                focusGoalMinutes: focusGoalMinutes.value,
+            });
         } catch (error) {
             console.error("Failed to start focus session:", error);
         }
+    }
+
+    // Break reminder actions (fired when the focus duration target is reached).
+    function dismissBreakReminder() {
+        showBreakReminder.value = false;
+        invoke("hide_windows").catch((error) => {
+            console.error("Failed to hide window:", error);
+        });
+    }
+
+    async function startBreakFromReminder(minutes = 5) {
+        showBreakReminder.value = false;
+        await startFreeActivity(minutes);
     }
 
     async function confirmEndFocus() {
@@ -544,6 +569,14 @@ export const useAppStore = defineStore("app", () => {
                 }
             });
 
+            unlistenGoalReached = await listen<{ minutes: number }>(
+                "focus-goal-reached",
+                (event) => {
+                    breakReminderMinutes.value = event.payload.minutes;
+                    showBreakReminder.value = true;
+                },
+            );
+
             initSelectedFromWhitelist();
             void loadHistory(true);
             void loadApps(false);
@@ -563,6 +596,7 @@ export const useAppStore = defineStore("app", () => {
     function cleanup() {
         if (unlistenState) unlistenState();
         if (unlistenShowView) unlistenShowView();
+        if (unlistenGoalReached) unlistenGoalReached();
         if (timerInterval) clearInterval(timerInterval);
         stopBreakTimer();
     }
@@ -593,6 +627,9 @@ export const useAppStore = defineStore("app", () => {
         showFreeActivityOptions,
         customMinutes,
         breakRemaining,
+        focusGoalMinutes,
+        showBreakReminder,
+        breakReminderMinutes,
 
         // Computed
         selectedLocale,
@@ -615,6 +652,8 @@ export const useAppStore = defineStore("app", () => {
         startFocus,
         confirmEndFocus,
         startFreeActivity,
+        dismissBreakReminder,
+        startBreakFromReminder,
         loadMoreHistory,
 
         // Lifecycle

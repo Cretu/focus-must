@@ -45,6 +45,7 @@ const appState = ref<AppState>({
     free_activity_started_at: null,
     free_activity_end_at: null,
     locale: "system",
+    focus_goal_minutes: 0,
     temp_allowed: {},
 });
 

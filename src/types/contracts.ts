@@ -20,6 +20,7 @@ export interface AppState {
     free_activity_started_at: number | null;
     free_activity_end_at: number | null;
     locale: PreferredLocale;
+    focus_goal_minutes: number;
     temp_allowed: Record<string, number>;
 }
 
