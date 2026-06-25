@@ -102,9 +102,9 @@ export const useAppStore = defineStore("app", () => {
     const showEndConfirm = ref(false);
     const allowedAppNames = ref<AppInfo[]>([]);
 
-    // --- Focus duration / break reminder ---
-    // 0 = no reminder; otherwise remind to take a break every N minutes.
-    const focusGoalMinutes = ref(0);
+    // --- Break reminder ---
+    // The interval is a persisted setting (appState.focus_goal_minutes,
+    // 0 = off). These refs only drive the reminder popup when it fires.
     const showBreakReminder = ref(false);
     const breakReminderMinutes = ref(0);
 
@@ -408,11 +408,7 @@ export const useAppStore = defineStore("app", () => {
             whitelist.includes(a.bundle_id),
         );
         try {
-            await invoke("unlock_session", {
-                whitelist,
-                task,
-                focusGoalMinutes: focusGoalMinutes.value,
-            });
+            await invoke("unlock_session", { whitelist, task });
         } catch (error) {
             console.error("Failed to start focus session:", error);
         }
@@ -429,6 +425,13 @@ export const useAppStore = defineStore("app", () => {
     async function startBreakFromReminder(minutes = 5) {
         showBreakReminder.value = false;
         await startFreeActivity(minutes);
+    }
+
+    // Persisted break-reminder interval (minutes; 0 = off).
+    function setBreakReminder(minutes: number) {
+        invoke("set_break_reminder", { minutes }).catch((error) => {
+            console.error("Failed to set break reminder:", error);
+        });
     }
 
     // Self-check / diagnostics actions.
@@ -657,7 +660,6 @@ export const useAppStore = defineStore("app", () => {
         showFreeActivityOptions,
         customMinutes,
         breakRemaining,
-        focusGoalMinutes,
         showBreakReminder,
         breakReminderMinutes,
 
@@ -684,6 +686,7 @@ export const useAppStore = defineStore("app", () => {
         startFreeActivity,
         dismissBreakReminder,
         startBreakFromReminder,
+        setBreakReminder,
         runSelfCheck,
         testSound,
         previewPrompt,

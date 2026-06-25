@@ -64,6 +64,9 @@ pub struct UserSettings {
     pub default_whitelist: Vec<String>,
     #[serde(default = "default_locale")]
     pub locale: String,
+    /// Break-reminder interval in minutes (0 = disabled).
+    #[serde(default)]
+    pub break_reminder_minutes: u64,
 }
 
 fn default_locale() -> String {
@@ -78,6 +81,7 @@ impl Default for UserSettings {
                 .map(|s| s.to_string())
                 .collect(),
             locale: default_locale(),
+            break_reminder_minutes: 0,
         }
     }
 }
