@@ -34,6 +34,12 @@ const recentTaskMenuItems = computed(() =>
 
 const MAX_BREAK_MINUTES = 480;
 
+// Break-reminder interval options (0 = no reminder).
+const focusDurationOptions = [0, 25, 45, 60, 90];
+function focusDurationLabel(value: number) {
+    return value === 0 ? t("app.noLimit") : t("app.minutesShort", { minutes: value });
+}
+
 function triggerCustomBreak() {
     const raw = String(store.customMinutes).trim();
     if (!raw) return;
@@ -209,6 +215,23 @@ function handleTaskKeydown(event: KeyboardEvent) {
                             />
                         </div>
                     </template>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="shrink-0 text-xs text-muted">
+                            <UIcon name="i-lucide-bell" class="align-[-2px] text-sm" />
+                            {{ t("app.focusDuration") }}
+                        </span>
+                        <UButton
+                            v-for="opt in focusDurationOptions"
+                            :key="opt"
+                            size="xs"
+                            :color="store.focusGoalMinutes === opt ? 'primary' : 'neutral'"
+                            :variant="store.focusGoalMinutes === opt ? 'solid' : 'outline'"
+                            @click="store.focusGoalMinutes = opt"
+                        >
+                            {{ focusDurationLabel(opt) }}
+                        </UButton>
+                    </div>
 
                     <UButton
                         color="success"

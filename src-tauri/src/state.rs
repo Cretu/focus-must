@@ -48,6 +48,18 @@ pub struct AppInfo {
     pub icon_data_url: Option<String>,
 }
 
+/// A connected display, reported by the self-check / diagnostics panel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitorInfo {
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub x: i32,
+    pub y: i32,
+    pub is_primary: bool,
+    pub scale: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
     pub is_restricted: bool,
@@ -58,6 +70,10 @@ pub struct AppState {
     pub free_activity_started_at: Option<u64>,
     pub free_activity_end_at: Option<u64>,
     pub locale: String,
+    /// Break-reminder interval in minutes for the active focus session
+    /// (0 = no reminder). Set when a focus session starts.
+    #[serde(default)]
+    pub focus_goal_minutes: u64,
     /// Per-app temporary passes: bundle id -> unix expiry. While unexpired, the
     /// app is allowed even during a restricted focus session ("use once" grace).
     #[serde(default)]
@@ -68,6 +84,13 @@ pub struct AppState {
     /// persisted or sent to the frontend.
     #[serde(skip)]
     pub prompt_active: bool,
+    /// Diagnostics: last non-self frontmost app seen by the monitor (proves
+    /// foreground monitoring is alive). Not persisted or sent to the frontend.
+    #[serde(skip)]
+    pub last_frontmost: Option<String>,
+    /// Diagnostics: connected displays, refreshed on the main thread.
+    #[serde(skip)]
+    pub monitors_info: Vec<MonitorInfo>,
 }
 
 impl Default for AppState {
@@ -81,8 +104,11 @@ impl Default for AppState {
             free_activity_started_at: None,
             free_activity_end_at: None,
             locale: "system".to_string(),
+            focus_goal_minutes: 0,
             temp_allowed: HashMap::new(),
             prompt_active: false,
+            last_frontmost: None,
+            monitors_info: Vec::new(),
         }
     }
 }

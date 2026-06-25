@@ -9,7 +9,15 @@ const appName = ref("");
 const bundleId = ref("");
 let unlisten: UnlistenFn | null = null;
 
+function onKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+        event.preventDefault();
+        continueFocus();
+    }
+}
+
 onMounted(async () => {
+    window.addEventListener("keydown", onKeydown);
     unlisten = await listen<BlockedAppEvent>("blocked-app", (event) => {
         appName.value = event.payload.name;
         bundleId.value = event.payload.bundle_id;
@@ -17,6 +25,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    window.removeEventListener("keydown", onKeydown);
     if (unlisten) unlisten();
 });
 

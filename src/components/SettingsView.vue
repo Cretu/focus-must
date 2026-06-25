@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "../stores/appStore";
 import AppGrid from "./AppGrid.vue";
@@ -10,6 +11,10 @@ defineProps<{
 
 const store = useAppStore();
 const { t } = useI18n();
+
+onMounted(() => {
+    store.runSelfCheck();
+});
 </script>
 
 <template>
@@ -83,6 +88,105 @@ const { t } = useI18n();
                             <span>{{ t("app.defaultAppearance") }}</span>
                         </p>
                         <UColorModeSelect size="sm" class="w-28" />
+                    </div>
+                </div>
+            </UCard>
+
+            <UCard variant="soft">
+                <template #header>
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                            <UIcon name="i-lucide-stethoscope" class="text-base" />
+                            <span>{{ t("app.selfCheck") }}</span>
+                            <span class="text-xs font-normal">({{ t("app.selfCheckSubtitle") }})</span>
+                        </div>
+                        <UButton
+                            color="neutral"
+                            variant="outline"
+                            size="xs"
+                            :loading="store.selfCheckLoading"
+                            leading-icon="i-lucide-refresh-cw"
+                            @click="store.runSelfCheck()"
+                        >
+                            {{ t("app.recheck") }}
+                        </UButton>
+                    </div>
+                </template>
+
+                <div class="space-y-3 text-sm">
+                    <!-- Foreground monitoring -->
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="flex items-center gap-1.5 text-muted">
+                            <UIcon name="i-lucide-eye" class="text-base" />
+                            {{ t("app.checkMonitoring") }}
+                        </span>
+                        <UBadge
+                            v-if="store.selfCheck?.last_frontmost"
+                            color="success"
+                            variant="soft"
+                        >
+                            {{ t("app.checkOk") }} · {{ store.selfCheck.last_frontmost }}
+                        </UBadge>
+                        <UBadge v-else color="warning" variant="soft">
+                            {{ t("app.checkMonitoringWait") }}
+                        </UBadge>
+                    </div>
+
+                    <!-- Displays -->
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="flex items-center gap-1.5 text-muted">
+                                <UIcon name="i-lucide-monitor" class="text-base" />
+                                {{ t("app.checkDisplays") }}
+                            </span>
+                            <UBadge color="neutral" variant="soft">
+                                {{ t("app.displayCount", { count: store.selfCheck?.monitors.length ?? 0 }) }}
+                            </UBadge>
+                        </div>
+                        <div
+                            v-for="(mon, i) in store.selfCheck?.monitors ?? []"
+                            :key="i"
+                            class="flex items-center justify-between gap-2 rounded-md bg-elevated/50 px-2 py-1 text-xs text-muted"
+                        >
+                            <span class="truncate">{{ mon.name || `#${i + 1}` }}</span>
+                            <span class="flex items-center gap-1.5">
+                                {{ mon.width }}×{{ mon.height }}
+                                <UBadge v-if="mon.is_primary" color="primary" variant="soft" size="sm">
+                                    {{ t("app.primaryDisplay") }}
+                                </UBadge>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Version -->
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="flex items-center gap-1.5 text-muted">
+                            <UIcon name="i-lucide-tag" class="text-base" />
+                            {{ t("app.checkVersion") }}
+                        </span>
+                        <UBadge color="neutral" variant="soft">v{{ store.selfCheck?.version ?? "—" }}</UBadge>
+                    </div>
+
+                    <!-- Interactive tests -->
+                    <div class="flex flex-wrap gap-2 pt-1">
+                        <UButton
+                            color="neutral"
+                            variant="outline"
+                            size="sm"
+                            leading-icon="i-lucide-volume-2"
+                            @click="store.testSound()"
+                        >
+                            {{ t("app.testSound") }}
+                        </UButton>
+                        <UButton
+                            color="neutral"
+                            variant="outline"
+                            size="sm"
+                            leading-icon="i-lucide-app-window"
+                            @click="store.previewPrompt()"
+                        >
+                            {{ t("app.previewPrompt") }}
+                        </UButton>
                     </div>
                 </div>
             </UCard>

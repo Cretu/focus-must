@@ -276,9 +276,10 @@ fn monitors_signature(app: &tauri::AppHandle) -> String {
 fn start_monitoring_macos(app: tauri::AppHandle) {
     use objc2_app_kit::NSWorkspace;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     let self_bundle_id = app.config().identifier.clone();
+    let mut prompt_shown_at: Option<Instant> = None;
 
     // Track the display layout so overlays can be rebuilt on hot-plug. All
     // monitor/window queries run on the main thread (AppKit is not thread-safe).
@@ -315,7 +316,9 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
 
                 let (allowed, is_restricted, is_free_activity, has_focus_session, prompt_active, had_temp) = {
                     let state = app.state::<Mutex<AppState>>();
-                    let s = lock_mutex(&state);
+                    let mut s = lock_mutex(&state);
+                    // Diagnostics: record the live frontmost app for the self-check.
+                    s.last_frontmost = Some(bundle_id.clone());
                     let allowed = s.is_app_allowed(&bundle_id);
                     (
                         allowed,
@@ -331,9 +334,12 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                 let should_block =
                     has_focus_session && is_restricted && !is_free_activity && !allowed;
 
-                // Show the prompt only on the rising edge; it then stays up until
-                // the user chooses (dismissal clears `prompt_active`).
-                if should_block && !prompt_active {
+                if should_block {
+                    // Collect the distracting app (Cmd+H equivalent) and show the
+                    // prompt for it. Runs whenever a non-allowed app is frontmost,
+                    // so switching to a *different* distracting app is also caught.
+                    let _ = unsafe { front_app.hide() };
+
                     {
                         let state = app.state::<Mutex<AppState>>();
                         let mut s = lock_mutex(&state);
@@ -342,13 +348,12 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                         s.temp_allowed.remove(&bundle_id);
                     }
 
-                    // Gently collect the distracting app (Cmd+H equivalent).
-                    let _ = unsafe { front_app.hide() };
-
                     // Audible cue when a temporary pass has just expired.
                     if had_temp {
                         commands::play_sound("Submarine");
                     }
+
+                    prompt_shown_at = Some(Instant::now());
 
                     let name = current_app_name.clone();
                     let bid = bundle_id.clone();
@@ -360,6 +365,29 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                         );
                         commands::show_prompt_window(&app_for_prompt);
                     });
+                } else if prompt_active {
+                    // An allowed app is frontmost while the prompt is up — the user
+                    // went back to work, so dismiss it. A short min-display guard
+                    // avoids a flash if focus hasn't landed on the prompt yet.
+                    const PROMPT_MIN_DISPLAY_MS: u64 = 800;
+                    let long_enough = prompt_shown_at
+                        .map(|t| t.elapsed() >= Duration::from_millis(PROMPT_MIN_DISPLAY_MS))
+                        .unwrap_or(true);
+
+                    if long_enough {
+                        {
+                            let state = app.state::<Mutex<AppState>>();
+                            lock_mutex(&state).prompt_active = false;
+                        }
+                        prompt_shown_at = None;
+
+                        let app_for_hide = app.clone();
+                        let _ = app.run_on_main_thread(move || {
+                            if let Some(win) = app_for_hide.get_webview_window("prompt") {
+                                let _ = win.hide();
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -384,6 +412,7 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                 }
 
                 commands::sync_overlays(&app_chk);
+                commands::refresh_monitors_info(&app_chk);
 
                 // Re-show overlays if the windows are currently meant to be visible.
                 let main_visible = app_chk

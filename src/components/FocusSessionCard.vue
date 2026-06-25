@@ -93,6 +93,33 @@ function confirmEndFocus() {
                 </div>
             </template>
         </UModal>
+
+        <UModal
+            v-model:open="store.showBreakReminder"
+            :title="t('app.breakReminderTitle')"
+            :description="t('app.breakReminderDesc', { minutes: store.breakReminderMinutes })"
+            :dismissible="false"
+        >
+            <template #footer>
+                <div class="flex w-full justify-end gap-2">
+                    <UButton
+                        color="neutral"
+                        variant="outline"
+                        leading-icon="i-lucide-arrow-right"
+                        @click="store.dismissBreakReminder()"
+                    >
+                        {{ t("app.continueFocus") }}
+                    </UButton>
+                    <UButton
+                        color="primary"
+                        leading-icon="i-lucide-coffee"
+                        @click="store.startBreakFromReminder(5)"
+                    >
+                        {{ t("app.startBreakNow", { minutes: 5 }) }}
+                    </UButton>
+                </div>
+            </template>
+        </UModal>
     </UCard>
 </template>
 

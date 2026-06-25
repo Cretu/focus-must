@@ -6,6 +6,22 @@ export interface AppInfo {
     icon_data_url?: string | null;
 }
 
+export interface MonitorInfo {
+    name: string;
+    width: number;
+    height: number;
+    x: number;
+    y: number;
+    is_primary: boolean;
+    scale: number;
+}
+
+export interface SelfCheckReport {
+    last_frontmost: string | null;
+    monitors: MonitorInfo[];
+    version: string;
+}
+
 export interface BlockedAppEvent {
     name: string;
     bundle_id: string;
@@ -20,6 +36,7 @@ export interface AppState {
     free_activity_started_at: number | null;
     free_activity_end_at: number | null;
     locale: PreferredLocale;
+    focus_goal_minutes: number;
     temp_allowed: Record<string, number>;
 }
 

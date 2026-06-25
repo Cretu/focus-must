@@ -24,17 +24,23 @@ fn tray_title_updater(app: tauri::AppHandle) {
     use std::thread;
     use std::time::Duration;
 
+    // Track the focus session we're reminding for, and how many break reminders
+    // have fired (so reminders repeat every `focus_goal_minutes`).
+    let mut reminder_session: Option<u64> = None;
+    let mut reminders_fired: u64 = 0;
+
     loop {
         thread::sleep(Duration::from_secs(TRAY_TITLE_UPDATE_INTERVAL_SECS));
 
         let state = app.state::<Mutex<AppState>>();
-        let (started_at, free_end_at, locale, temp_allowed) = {
+        let (started_at, free_end_at, locale, temp_allowed, focus_goal_minutes) = {
             let s = lock_mutex(&state);
             (
                 s.focus_started_at,
                 s.free_activity_end_at,
                 s.locale.clone(),
                 s.temp_allowed.clone(),
+                s.focus_goal_minutes,
             )
         };
 
@@ -45,6 +51,24 @@ fn tray_title_updater(app: tauri::AppHandle) {
             let hours = elapsed / 3600;
             let mins = (elapsed % 3600) / 60;
             let secs = elapsed % 60;
+
+            // Break reminder: fire a sound + popup every `focus_goal_minutes`.
+            if reminder_session != Some(start_ts) {
+                reminder_session = Some(start_ts);
+                reminders_fired = 0;
+            }
+            if focus_goal_minutes > 0 {
+                let goal_secs = focus_goal_minutes * 60;
+                if elapsed >= goal_secs * (reminders_fired + 1) {
+                    reminders_fired += 1;
+                    commands::play_sound("Glass");
+                    commands::show_main_window(&app, false);
+                    let _ = app.emit(
+                        "focus-goal-reached",
+                        serde_json::json!({ "minutes": focus_goal_minutes * reminders_fired }),
+                    );
+                }
+            }
 
             let mut title = tray_title_focus(&locale, hours, mins, secs);
 
@@ -121,6 +145,9 @@ pub fn run() {
             commands::switch_to_app,
             commands::allow_app_temporarily,
             commands::dismiss_distraction,
+            commands::run_self_check,
+            commands::test_sound,
+            commands::preview_prompt,
             commands::start_free_activity,
             commands::update_settings,
             commands::set_locale,
@@ -291,6 +318,9 @@ pub fn run() {
 
                 // Small modal window used for the distraction prompt.
                 commands::create_prompt_window(app.handle());
+
+                // Cache the display list for the self-check panel.
+                commands::refresh_monitors_info(app.handle());
             }
 
             commands::show_main_window(app.handle(), false);
