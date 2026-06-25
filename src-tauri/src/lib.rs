@@ -145,6 +145,9 @@ pub fn run() {
             commands::switch_to_app,
             commands::allow_app_temporarily,
             commands::dismiss_distraction,
+            commands::run_self_check,
+            commands::test_sound,
+            commands::preview_prompt,
             commands::start_free_activity,
             commands::update_settings,
             commands::set_locale,
@@ -315,6 +318,9 @@ pub fn run() {
 
                 // Small modal window used for the distraction prompt.
                 commands::create_prompt_window(app.handle());
+
+                // Cache the display list for the self-check panel.
+                commands::refresh_monitors_info(app.handle());
             }
 
             commands::show_main_window(app.handle(), false);

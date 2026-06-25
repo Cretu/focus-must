@@ -63,7 +63,19 @@
         "confirmEndDescription": "Are you sure you want to end this focus session?",
         "cancel": "Cancel",
         "confirmEnd": "Confirm",
-        "language": "Language"
+        "language": "Language",
+        "selfCheck": "Self-check",
+        "selfCheckSubtitle": "verify core features work",
+        "recheck": "Re-run",
+        "checkMonitoring": "Foreground monitoring",
+        "checkOk": "OK",
+        "checkMonitoringWait": "Switch to another app to check",
+        "checkDisplays": "Displays",
+        "displayCount": "{count} detected",
+        "primaryDisplay": "Primary",
+        "checkVersion": "Version",
+        "testSound": "Test sound",
+        "previewPrompt": "Preview prompt"
     },
     "overlay": {
         "breakTitle": "Taking a Break",

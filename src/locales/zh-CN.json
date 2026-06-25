@@ -63,7 +63,19 @@
     "confirmEndDescription": "确定要结束本次专注吗？",
     "cancel": "取消",
     "confirmEnd": "确定结束",
-    "language": "语言"
+    "language": "语言",
+    "selfCheck": "自检",
+    "selfCheckSubtitle": "确认核心功能正常",
+    "recheck": "重新检测",
+    "checkMonitoring": "前台监控",
+    "checkOk": "正常",
+    "checkMonitoringWait": "切换一次其他应用以检测",
+    "checkDisplays": "显示器",
+    "displayCount": "检测到 {count} 块",
+    "primaryDisplay": "主屏",
+    "checkVersion": "版本",
+    "testSound": "测试提示音",
+    "previewPrompt": "预览拦截弹窗"
   },
   "overlay": {
     "breakTitle": "休息一下",

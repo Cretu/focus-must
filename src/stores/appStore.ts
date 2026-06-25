@@ -14,7 +14,7 @@ import {
     type PreferredLocale,
 } from "../i18n";
 import { useHistory } from "../composables/useHistory";
-import type { AppInfo, AppState } from "../types/contracts";
+import type { AppInfo, AppState, SelfCheckReport } from "../types/contracts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,6 +114,10 @@ export const useAppStore = defineStore("app", () => {
     const settingsLocale = ref<PreferredLocale>("system");
     const autostartEnabled = ref(false);
     const autostartLoading = ref(false);
+
+    // --- Self-check / diagnostics ---
+    const selfCheck = ref<SelfCheckReport | null>(null);
+    const selfCheckLoading = ref(false);
 
     // --- History ---
     const {
@@ -427,6 +431,30 @@ export const useAppStore = defineStore("app", () => {
         await startFreeActivity(minutes);
     }
 
+    // Self-check / diagnostics actions.
+    async function runSelfCheck() {
+        selfCheckLoading.value = true;
+        try {
+            selfCheck.value = await invoke<SelfCheckReport>("run_self_check");
+        } catch (error) {
+            console.error("Self-check failed:", error);
+        } finally {
+            selfCheckLoading.value = false;
+        }
+    }
+
+    function testSound() {
+        invoke("test_sound").catch((error) => {
+            console.error("Failed to play test sound:", error);
+        });
+    }
+
+    function previewPrompt() {
+        invoke("preview_prompt").catch((error) => {
+            console.error("Failed to preview prompt:", error);
+        });
+    }
+
     async function confirmEndFocus() {
         showEndConfirm.value = false;
         try {
@@ -619,6 +647,8 @@ export const useAppStore = defineStore("app", () => {
         settingsLocale,
         autostartEnabled,
         autostartLoading,
+        selfCheck,
+        selfCheckLoading,
         sessionHistory,
         historyHasMore,
         historyLoading,
@@ -654,6 +684,9 @@ export const useAppStore = defineStore("app", () => {
         startFreeActivity,
         dismissBreakReminder,
         startBreakFromReminder,
+        runSelfCheck,
+        testSound,
+        previewPrompt,
         loadMoreHistory,
 
         // Lifecycle

@@ -1,6 +1,7 @@
 use crate::app_monitor;
 use crate::state::{
-    lock_mutex, normalize_locale, unix_now_secs, AppInfo, AppState, MIN_SESSION_DURATION_SECS,
+    lock_mutex, normalize_locale, unix_now_secs, AppInfo, AppState, MonitorInfo,
+    MIN_SESSION_DURATION_SECS,
 };
 use crate::storage;
 use crate::tray::{tray_locale, tray_title_break_minutes, TrayMenuState};
@@ -88,6 +89,91 @@ pub fn play_sound(name: &str) {
     let _ = std::process::Command::new("afplay")
         .arg(format!("/System/Library/Sounds/{name}.aiff"))
         .spawn();
+}
+
+/// Collect the connected displays for diagnostics. Call on the main thread.
+pub fn collect_monitors_info(app: &tauri::AppHandle) -> Vec<MonitorInfo> {
+    let Some(win) = app.get_webview_window("main") else {
+        return Vec::new();
+    };
+
+    let primary_pos = win.primary_monitor().ok().flatten().map(|m| {
+        let p = m.position();
+        (p.x, p.y)
+    });
+
+    win.available_monitors()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|m| {
+            let p = m.position();
+            let s = m.size();
+            MonitorInfo {
+                name: m.name().cloned().unwrap_or_default(),
+                width: s.width,
+                height: s.height,
+                x: p.x,
+                y: p.y,
+                is_primary: Some((p.x, p.y)) == primary_pos,
+                scale: m.scale_factor(),
+            }
+        })
+        .collect()
+}
+
+/// Refresh the cached display list in shared state. Call on the main thread.
+pub fn refresh_monitors_info(app: &tauri::AppHandle) {
+    let monitors = collect_monitors_info(app);
+    if let Some(state) = app.try_state::<Mutex<AppState>>() {
+        lock_mutex(&state).monitors_info = monitors;
+    }
+}
+
+/// Diagnostics snapshot for the self-check panel.
+#[derive(serde::Serialize)]
+pub struct SelfCheckReport {
+    /// Last non-self frontmost app the monitor saw (None if not seen yet).
+    pub last_frontmost: Option<String>,
+    /// Connected displays.
+    pub monitors: Vec<MonitorInfo>,
+    /// App version.
+    pub version: String,
+}
+
+/// Run the self-check: report monitoring liveness, displays, and version.
+/// Reads the display list cached on the main thread (startup + hot-plug refresh)
+/// so the command stays safe off the main thread.
+#[tauri::command]
+pub fn run_self_check(state: tauri::State<'_, Mutex<AppState>>) -> SelfCheckReport {
+    let s = lock_mutex(&state);
+    SelfCheckReport {
+        last_frontmost: s.last_frontmost.clone(),
+        monitors: s.monitors_info.clone(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    }
+}
+
+/// Play the reminder sound so the user can confirm audio works.
+#[tauri::command]
+pub fn test_sound() {
+    play_sound("Glass");
+}
+
+/// Show the distraction prompt with sample content so the user can verify it
+/// appears on the right display and that the buttons / ESC work.
+#[tauri::command]
+pub fn preview_prompt(app: tauri::AppHandle) {
+    let _ = app.emit(
+        "blocked-app",
+        serde_json::json!({
+            "name": "Self-check Preview",
+            "bundle_id": "com.focus-must.selftest",
+        }),
+    );
+    let app_for_show = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        show_prompt_window(&app_for_show);
+    });
 }
 
 /// Show all overlay windows on secondary monitors.

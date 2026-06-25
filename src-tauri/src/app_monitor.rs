@@ -316,7 +316,9 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
 
                 let (allowed, is_restricted, is_free_activity, has_focus_session, prompt_active, had_temp) = {
                     let state = app.state::<Mutex<AppState>>();
-                    let s = lock_mutex(&state);
+                    let mut s = lock_mutex(&state);
+                    // Diagnostics: record the live frontmost app for the self-check.
+                    s.last_frontmost = Some(bundle_id.clone());
                     let allowed = s.is_app_allowed(&bundle_id);
                     (
                         allowed,
@@ -410,6 +412,7 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
                 }
 
                 commands::sync_overlays(&app_chk);
+                commands::refresh_monitors_info(&app_chk);
 
                 // Re-show overlays if the windows are currently meant to be visible.
                 let main_visible = app_chk
