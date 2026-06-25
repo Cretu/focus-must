@@ -131,6 +131,7 @@ pub fn run() {
                 app_state.default_whitelist = settings.default_whitelist;
             }
             app_state.locale = normalize_locale(&settings.locale).to_string();
+            app_state.focus_goal_minutes = settings.break_reminder_minutes;
             app_state
         }))
         .manage(Mutex::new(TrayMenuState::new()))
@@ -150,6 +151,7 @@ pub fn run() {
             commands::preview_prompt,
             commands::start_free_activity,
             commands::update_settings,
+            commands::set_break_reminder,
             commands::set_locale,
             commands::get_history_page,
             commands::get_analytics,

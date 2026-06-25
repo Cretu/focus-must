@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "../stores/appStore";
 import AppGrid from "./AppGrid.vue";
@@ -11,6 +11,13 @@ defineProps<{
 
 const store = useAppStore();
 const { t } = useI18n();
+
+const breakReminderOptions = computed(() =>
+    [25, 45, 60, 90].map((m) => ({
+        label: t("app.minutesShort", { minutes: m }),
+        value: m,
+    })),
+);
 
 onMounted(() => {
     store.runSelfCheck();
@@ -62,6 +69,39 @@ onMounted(() => {
                         <p class="text-xs text-muted">{{ t("app.autostartSubtitle") }}</p>
                     </div>
                     <USwitch v-model="store.autostartEnabled" :disabled="store.autostartLoading" />
+                </div>
+            </UCard>
+
+            <UCard variant="soft">
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <p class="flex items-center gap-1.5 text-sm font-semibold text-muted">
+                                <UIcon name="i-lucide-bell" class="text-base" />
+                                <span>{{ t("app.breakReminder") }}</span>
+                            </p>
+                            <p class="text-xs text-muted">{{ t("app.breakReminderSubtitle") }}</p>
+                        </div>
+                        <USwitch
+                            :model-value="store.appState.focus_goal_minutes > 0"
+                            @update:model-value="(v: boolean) => store.setBreakReminder(v ? 45 : 0)"
+                        />
+                    </div>
+                    <div
+                        v-if="store.appState.focus_goal_minutes > 0"
+                        class="flex items-center justify-between gap-3"
+                    >
+                        <p class="text-xs text-muted">{{ t("app.breakReminderEvery") }}</p>
+                        <USelect
+                            :model-value="store.appState.focus_goal_minutes"
+                            :items="breakReminderOptions"
+                            value-key="value"
+                            label-key="label"
+                            size="sm"
+                            class="w-32"
+                            @update:model-value="(v: number) => store.setBreakReminder(Number(v))"
+                        />
+                    </div>
                 </div>
             </UCard>
 

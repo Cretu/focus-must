@@ -81,6 +81,18 @@ pub fn show_prompt_window(app: &tauri::AppHandle) {
     let _ = prompt.set_always_on_top(true);
     let _ = prompt.show();
     let _ = prompt.set_focus();
+
+    // The app runs as an Accessory (no Dock icon), so set_focus alone doesn't
+    // reliably make it the active app — activate explicitly so the prompt
+    // becomes the key window and receives ESC / button clicks.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use objc2::{class, msg_send, runtime::AnyObject};
+        let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        if !ns_app.is_null() {
+            let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+        }
+    }
 }
 
 /// Play a built-in macOS system sound by name (e.g. "Submarine", "Glass").
@@ -416,7 +428,6 @@ pub fn unlock_session(
     tray_state: tauri::State<'_, Mutex<TrayMenuState>>,
     whitelist: Vec<String>,
     task: String,
-    focus_goal_minutes: Option<u64>,
 ) {
     {
         let mut s = lock_mutex(&state);
@@ -427,7 +438,6 @@ pub fn unlock_session(
         s.task_description = Some(task);
         s.focus_started_at = Some(unix_now_secs());
         s.free_activity_end_at = None;
-        s.focus_goal_minutes = focus_goal_minutes.unwrap_or(0);
         // Start each focus session with a clean slate of temporary passes.
         s.temp_allowed.clear();
         let _ = app.emit("state-changed", s.clone());
@@ -454,6 +464,15 @@ pub fn hide_windows(app: tauri::AppHandle) {
     hide_all_windows(&app);
 }
 
+/// Persist the user-facing settings from the current app state.
+fn persist_settings(s: &AppState) {
+    storage::save_settings(&storage::UserSettings {
+        default_whitelist: s.default_whitelist.clone(),
+        locale: s.locale.clone(),
+        break_reminder_minutes: s.focus_goal_minutes,
+    });
+}
+
 #[tauri::command]
 pub fn update_settings(
     state: tauri::State<'_, Mutex<AppState>>,
@@ -461,12 +480,25 @@ pub fn update_settings(
 ) {
     let mut s = lock_mutex(&state);
     if let Some(wl) = default_whitelist {
-        s.default_whitelist = wl.clone();
-        storage::save_settings(&storage::UserSettings {
-            default_whitelist: wl,
-            locale: s.locale.clone(),
-        });
+        s.default_whitelist = wl;
+        persist_settings(&s);
     }
+}
+
+/// Set the break-reminder interval (minutes; 0 = disabled) and persist it.
+#[tauri::command]
+pub fn set_break_reminder(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Mutex<AppState>>,
+    minutes: u64,
+) {
+    let next = {
+        let mut s = lock_mutex(&state);
+        s.focus_goal_minutes = minutes;
+        s.clone()
+    };
+    let _ = app.emit("state-changed", next.clone());
+    persist_settings(&next);
 }
 
 #[tauri::command]
@@ -478,23 +510,18 @@ pub fn set_locale(
 ) {
     let normalized = normalize_locale(&locale).to_string();
 
-    let (next_state, has_focus_session, has_break_session, default_whitelist) = {
+    let (next_state, has_focus_session, has_break_session) = {
         let mut s = lock_mutex(&state);
         s.locale = normalized.clone();
         (
             s.clone(),
             s.focus_started_at.is_some(),
             s.free_activity_end_at.is_some(),
-            s.default_whitelist.clone(),
         )
     };
 
+    persist_settings(&next_state);
     let _ = app.emit("state-changed", next_state);
-
-    storage::save_settings(&storage::UserSettings {
-        default_whitelist,
-        locale: normalized.clone(),
-    });
 
     if let Ok(mut ts) = tray_state.lock() {
         ts.set_locale(normalized.clone());
