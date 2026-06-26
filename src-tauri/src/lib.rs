@@ -33,52 +33,49 @@ fn tray_title_updater(app: tauri::AppHandle) {
         thread::sleep(Duration::from_secs(TRAY_TITLE_UPDATE_INTERVAL_SECS));
 
         let state = app.state::<Mutex<AppState>>();
-        let (started_at, free_end_at, locale, temp_allowed, focus_goal_minutes) = {
+        let (started_at, free_end_at, locale, focus_goal_minutes, paused) = {
             let s = lock_mutex(&state);
             (
                 s.focus_started_at,
                 s.free_activity_end_at,
                 s.locale.clone(),
-                s.temp_allowed.clone(),
                 s.focus_goal_minutes,
+                s.paused,
             )
         };
 
         let title = if let Some(start_ts) = started_at {
-            let now = unix_now_secs();
-            let elapsed = now.saturating_sub(start_ts);
+            if paused {
+                // Frozen while paused.
+                tray_locale(&locale).paused_label.to_string()
+            } else {
+                let now = unix_now_secs();
+                let elapsed = now.saturating_sub(start_ts);
 
-            let hours = elapsed / 3600;
-            let mins = (elapsed % 3600) / 60;
-            let secs = elapsed % 60;
+                let hours = elapsed / 3600;
+                let mins = (elapsed % 3600) / 60;
+                let secs = elapsed % 60;
 
-            // Break reminder: fire a sound + popup every `focus_goal_minutes`.
-            if reminder_session != Some(start_ts) {
-                reminder_session = Some(start_ts);
-                reminders_fired = 0;
-            }
-            if focus_goal_minutes > 0 {
-                let goal_secs = focus_goal_minutes * 60;
-                if elapsed >= goal_secs * (reminders_fired + 1) {
-                    reminders_fired += 1;
-                    commands::play_sound("Glass");
-                    commands::show_main_window(&app, false);
-                    let _ = app.emit(
-                        "focus-goal-reached",
-                        serde_json::json!({ "minutes": focus_goal_minutes * reminders_fired }),
-                    );
+                // Break reminder: fire a sound + popup every `focus_goal_minutes`.
+                if reminder_session != Some(start_ts) {
+                    reminder_session = Some(start_ts);
+                    reminders_fired = 0;
                 }
+                if focus_goal_minutes > 0 {
+                    let goal_secs = focus_goal_minutes * 60;
+                    if elapsed >= goal_secs * (reminders_fired + 1) {
+                        reminders_fired += 1;
+                        commands::play_sound("Glass");
+                        commands::show_main_window(&app, false);
+                        let _ = app.emit(
+                            "focus-goal-reached",
+                            serde_json::json!({ "minutes": focus_goal_minutes * reminders_fired }),
+                        );
+                    }
+                }
+
+                tray_title_focus(&locale, hours, mins, secs)
             }
-
-            let mut title = tray_title_focus(&locale, hours, mins, secs);
-
-            // Append the soonest active temporary-pass countdown, if any.
-            if let Some(min_until) = temp_allowed.values().copied().filter(|u| *u > now).min() {
-                let remaining = min_until - now;
-                title = format!("{title}  ⏳{}:{:02}", remaining / 60, remaining % 60);
-            }
-
-            title
         } else if let Some(end_ts) = free_end_at {
             let now = unix_now_secs();
 
@@ -123,6 +120,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Mutex::new({
             let mut app_state = AppState::default();
             // Load persistent settings
@@ -144,11 +142,11 @@ pub fn run() {
             commands::lock_session,
             commands::hide_windows,
             commands::switch_to_app,
-            commands::allow_app_temporarily,
-            commands::dismiss_distraction,
+            commands::pause_focus,
+            commands::resume_focus,
             commands::run_self_check,
             commands::test_sound,
-            commands::preview_prompt,
+            commands::test_notification,
             commands::start_free_activity,
             commands::update_settings,
             commands::set_break_reminder,
@@ -192,6 +190,14 @@ pub fn run() {
                 Some(NativeIcon::LockLocked),
                 None::<&str>,
             )?;
+            let pause_i = IconMenuItem::with_id_and_native_icon(
+                app,
+                "pause",
+                tray_locale(&locale).pause_inactive,
+                false,
+                None,
+                None::<&str>,
+            )?;
             let end_break_i = IconMenuItem::with_id_and_native_icon(
                 app,
                 "end_break",
@@ -224,14 +230,17 @@ pub fn run() {
                     s.locale = locale.clone();
                     s.show_item = Some(show_i.clone());
                     s.lock_item = Some(lock_i.clone());
+                    s.pause_item = Some(pause_i.clone());
                     s.end_break_item = Some(end_break_i.clone());
                     s.settings_item = Some(settings_i.clone());
                     s.quit_item = Some(quit_i.clone());
                 };
             }
 
-            let menu =
-                Menu::with_items(app, &[&show_i, &lock_i, &end_break_i, &settings_i, &quit_i])?;
+            let menu = Menu::with_items(
+                app,
+                &[&show_i, &lock_i, &pause_i, &end_break_i, &settings_i, &quit_i],
+            )?;
 
             let mut tray_builder = TrayIconBuilder::with_id("focus-tray");
             if let Some(icon) = app.default_window_icon().cloned() {
@@ -258,6 +267,27 @@ pub fn run() {
                     }
                     "lock" => {
                         commands::do_lock_session(app);
+                    }
+                    "pause" => {
+                        let paused = {
+                            let state = app.state::<Mutex<AppState>>();
+                            let s = lock_mutex(&state);
+                            s.paused
+                        };
+                        if paused {
+                            commands::resume_focus(
+                                app.clone(),
+                                app.state::<Mutex<AppState>>(),
+                                app.state::<Mutex<TrayMenuState>>(),
+                                None,
+                            );
+                        } else {
+                            commands::pause_focus(
+                                app.clone(),
+                                app.state::<Mutex<AppState>>(),
+                                app.state::<Mutex<TrayMenuState>>(),
+                            );
+                        }
                     }
                     "end_break" => {
                         {
@@ -318,11 +348,14 @@ pub fn run() {
                 // windows covering every secondary monitor.
                 commands::sync_overlays(app.handle());
 
-                // Small modal window used for the distraction prompt.
-                commands::create_prompt_window(app.handle());
-
                 // Cache the display list for the self-check panel.
                 commands::refresh_monitors_info(app.handle());
+            }
+
+            // Ask for notification permission up front (macOS prompts once).
+            {
+                use tauri_plugin_notification::NotificationExt;
+                let _ = app.notification().request_permission();
             }
 
             commands::show_main_window(app.handle(), false);

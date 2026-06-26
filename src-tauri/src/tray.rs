@@ -11,11 +11,15 @@ pub struct TrayLocale {
     pub lock_inactive: &'static str,
     pub break_active: &'static str,
     pub break_inactive: &'static str,
+    pub pause: &'static str,
+    pub resume: &'static str,
+    pub pause_inactive: &'static str,
     pub settings: &'static str,
     pub quit: &'static str,
     pub planning: &'static str,
     pub focus_prefix: &'static str,
     pub break_prefix: &'static str,
+    pub paused_label: &'static str,
 }
 
 const TRAY_LOCALE_EN: TrayLocale = TrayLocale {
@@ -24,11 +28,15 @@ const TRAY_LOCALE_EN: TrayLocale = TrayLocale {
     lock_inactive: "End Focus (Not Started)",
     break_active: "End Break",
     break_inactive: "End Break (Not Started)",
+    pause: "Pause Focus",
+    resume: "Resume Focus",
+    pause_inactive: "Pause Focus (Not Started)",
     settings: "Settings",
     quit: "Quit",
     planning: "Planning",
     focus_prefix: "Focusing",
     break_prefix: "On Break",
+    paused_label: "Paused",
 };
 
 const TRAY_LOCALE_ZH: TrayLocale = TrayLocale {
@@ -37,11 +45,15 @@ const TRAY_LOCALE_ZH: TrayLocale = TrayLocale {
     lock_inactive: "结束专注 (未开始)",
     break_active: "结束休息",
     break_inactive: "结束休息 (未开始)",
+    pause: "暂停专注",
+    resume: "继续专注",
+    pause_inactive: "暂停专注 (未开始)",
     settings: "设置",
     quit: "退出",
     planning: "计划中",
     focus_prefix: "专注中",
     break_prefix: "休息中",
+    paused_label: "已暂停",
 };
 
 pub fn tray_locale(locale: &str) -> &'static TrayLocale {
@@ -79,6 +91,7 @@ pub struct TrayMenuState {
     pub locale: String,
     pub show_item: Option<IconMenuItem<tauri::Wry>>,
     pub lock_item: Option<IconMenuItem<tauri::Wry>>,
+    pub pause_item: Option<IconMenuItem<tauri::Wry>>,
     pub end_break_item: Option<IconMenuItem<tauri::Wry>>,
     pub settings_item: Option<IconMenuItem<tauri::Wry>>,
     pub quit_item: Option<IconMenuItem<tauri::Wry>>,
@@ -96,6 +109,7 @@ impl TrayMenuState {
             locale: "system".to_string(),
             show_item: None,
             lock_item: None,
+            pause_item: None,
             end_break_item: None,
             settings_item: None,
             quit_item: None,
@@ -124,9 +138,25 @@ impl TrayMenuState {
             let _ = item.set_enabled(true);
             let _ = item.set_text(tray_locale(&self.locale).lock_active);
         }
+        if let Some(item) = &self.pause_item {
+            let _ = item.set_enabled(true);
+            let _ = item.set_text(tray_locale(&self.locale).pause);
+        }
         if let Some(item) = &self.end_break_item {
             let _ = item.set_enabled(false);
             let _ = item.set_text(tray_locale(&self.locale).break_inactive);
+        }
+    }
+
+    /// Focus session is paused — the pause item becomes "Resume".
+    pub fn set_paused(&self) {
+        if let Some(item) = &self.pause_item {
+            let _ = item.set_enabled(true);
+            let _ = item.set_text(tray_locale(&self.locale).resume);
+        }
+        if let Some(item) = &self.lock_item {
+            let _ = item.set_enabled(true);
+            let _ = item.set_text(tray_locale(&self.locale).lock_active);
         }
     }
 
@@ -134,6 +164,10 @@ impl TrayMenuState {
         if let Some(item) = &self.lock_item {
             let _ = item.set_enabled(false);
             let _ = item.set_text(tray_locale(&self.locale).lock_inactive);
+        }
+        if let Some(item) = &self.pause_item {
+            let _ = item.set_enabled(false);
+            let _ = item.set_text(tray_locale(&self.locale).pause_inactive);
         }
     }
 

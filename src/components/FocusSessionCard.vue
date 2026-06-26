@@ -59,7 +59,7 @@ function confirmEndFocus() {
                 </template>
             </UAlert>
 
-            <div class="flex justify-center gap-2">
+            <div class="flex flex-wrap justify-center gap-2">
                 <UButton
                     color="primary"
                     variant="solid"
@@ -67,6 +67,14 @@ function confirmEndFocus() {
                     @click="continueFocus"
                 >
                     {{ t("app.continueFocus") }}
+                </UButton>
+                <UButton
+                    color="neutral"
+                    variant="outline"
+                    leading-icon="i-lucide-circle-pause"
+                    @click="store.pauseFocus()"
+                >
+                    {{ t("app.pauseFocus") }}
                 </UButton>
                 <UButton
                     color="neutral"

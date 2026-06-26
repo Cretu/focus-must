@@ -222,10 +222,10 @@ onMounted(() => {
                             color="neutral"
                             variant="outline"
                             size="sm"
-                            leading-icon="i-lucide-app-window"
-                            @click="store.previewPrompt()"
+                            leading-icon="i-lucide-bell"
+                            @click="store.testNotification()"
                         >
-                            {{ t("app.previewPrompt") }}
+                            {{ t("app.testNotification") }}
                         </UButton>
                     </div>
                 </div>

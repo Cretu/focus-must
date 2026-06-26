@@ -13,12 +13,11 @@ declare module 'vue' {
   export interface GlobalComponents {
     AnalyticsView: typeof import('./src/components/AnalyticsView.vue')['default']
     AppGrid: typeof import('./src/components/AppGrid.vue')['default']
-    BlockedAppPanel: typeof import('./src/components/BlockedAppPanel.vue')['default']
     FocusSessionCard: typeof import('./src/components/FocusSessionCard.vue')['default']
     HistoryList: typeof import('./src/components/HistoryList.vue')['default']
     OverlayView: typeof import('./src/components/OverlayView.vue')['default']
+    PausedView: typeof import('./src/components/PausedView.vue')['default']
     PlanningView: typeof import('./src/components/PlanningView.vue')['default']
-    PromptView: typeof import('./src/components/PromptView.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingsView: typeof import('./src/components/SettingsView.vue')['default']

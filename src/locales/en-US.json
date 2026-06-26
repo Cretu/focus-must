@@ -59,8 +59,12 @@
         "breakReminderEvery": "Remind every",
         "keepFocus": "Stay Focused",
         "continueFocus": "Continue Focus",
+        "pauseFocus": "Pause Focus",
+        "resumeFocus": "Resume Focus",
+        "pausedTitle": "Paused",
+        "pausedHint": "Focus is paused — you can use any app freely. Adjust the apps allowed for this session below, then resume.",
         "focusTaskFallback": "Working on an important task...",
-        "focusHint": "If you open another app, this window will remind you again.",
+        "focusHint": "Opening an app that isn't on the list will minimize it and send a notification.",
         "endFocus": "End Focus",
         "confirmEndTitle": "End Focus",
         "confirmEndDescription": "Are you sure you want to end this focus session?",
@@ -78,7 +82,7 @@
         "primaryDisplay": "Primary",
         "checkVersion": "Version",
         "testSound": "Test sound",
-        "previewPrompt": "Preview prompt"
+        "testNotification": "Test notification"
     },
     "overlay": {
         "breakTitle": "Taking a Break",
