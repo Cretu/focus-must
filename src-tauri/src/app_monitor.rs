@@ -1,8 +1,8 @@
 use crate::commands;
-use crate::state::{lock_mutex, unix_now_secs, AppInfo, AppState};
+use crate::state::{lock_mutex, AppInfo, AppState};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 #[cfg(target_os = "macos")]
 use std::path::PathBuf;
@@ -272,35 +272,19 @@ fn monitors_signature(app: &tauri::AppHandle) -> String {
     parts.join("|")
 }
 
-/// Hide all running apps with the given bundle id (Cmd+H) and return the first
-/// app's display name. Used to re-collect an app whose temporary pass expired,
-/// independent of the frontmost cache.
-#[cfg(target_os = "macos")]
-fn collect_app_by_bundle(bundle_id: &str) -> Option<String> {
-    use objc2_app_kit::NSRunningApplication;
-    use objc2_foundation::NSString;
-
-    let ns_bundle = NSString::from_str(bundle_id);
-    let apps = unsafe { NSRunningApplication::runningApplicationsWithBundleIdentifier(&ns_bundle) };
-
-    let mut name = None;
-    for i in 0..apps.count() {
-        let running = apps.objectAtIndex(i);
-        if name.is_none() {
-            name = running.localizedName().map(|n| n.to_string());
-        }
-        let _ = unsafe { running.hide() };
-    }
-    name
-}
-
 #[cfg(target_os = "macos")]
 fn start_monitoring_macos(app: tauri::AppHandle) {
     use objc2_app_kit::NSWorkspace;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     let self_bundle_id = app.config().identifier.clone();
+
+    // Throttle distraction notifications so repeatedly opening a blocked app
+    // doesn't flood Notification Center.
+    let mut last_notified_bundle: Option<String> = None;
+    let mut last_notified_at: Option<Instant> = None;
+    const NOTIFY_THROTTLE_SECS: u64 = 20;
 
     // Track the display layout so overlays can be rebuilt on hot-plug. All
     // monitor/window queries run on the main thread (AppKit is not thread-safe).
@@ -317,103 +301,53 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
     let mut display_check_tick: u32 = 0;
 
     loop {
-        // First, re-collect any app whose temporary pass has expired. This is
-        // driven by the clock, not by the frontmost cache (which only refreshes
-        // on an app switch), so the re-lock fires even while the user sits on
-        // the app. The prompt is only ever dismissed by the user's choice.
-        let expired_bundle: Option<String> = {
-            let state = app.state::<Mutex<AppState>>();
-            let mut s = lock_mutex(&state);
-            if s.focus_started_at.is_some() && s.is_restricted && s.free_activity_end_at.is_none() {
-                let now = unix_now_secs();
-                let bundle = s
-                    .temp_allowed
-                    .iter()
-                    .find(|(_, &until)| until <= now)
-                    .map(|(b, _)| b.clone());
-                if let Some(ref b) = bundle {
-                    s.temp_allowed.remove(b);
-                    s.prompt_active = true;
-                }
-                bundle
-            } else {
-                None
-            }
-        };
-
-        if let Some(bundle) = expired_bundle {
-            let name = collect_app_by_bundle(&bundle).unwrap_or_default();
-            commands::play_sound("Submarine");
-
-            let app_for_prompt = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                let _ = app_for_prompt.emit(
-                    "blocked-app",
-                    serde_json::json!({ "name": name, "bundle_id": bundle }),
-                );
-                commands::show_prompt_window(&app_for_prompt);
-            });
-        } else if let Some(front_app) = NSWorkspace::sharedWorkspace().frontmostApplication() {
+        if let Some(front_app) = NSWorkspace::sharedWorkspace().frontmostApplication() {
             let bundle_id = front_app
                 .bundleIdentifier()
                 .map(|id| id.to_string())
                 .unwrap_or_default();
 
-            // Skip empty ids and our own windows. A non-allowed frontmost app is
-            // collected every tick (so switching to a *different* distracting app
-            // is also caught); the prompt itself is closed only by the user
-            // (ESC / Continue / Use once), never automatically.
+            // Skip empty ids and our own windows.
             if !bundle_id.is_empty() && bundle_id != self_bundle_id {
                 let current_app_name = front_app
                     .localizedName()
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
-                let (allowed, is_restricted, is_free_activity, has_focus_session, had_temp) = {
+                let (allowed, is_restricted, is_free_activity, has_focus_session, locale) = {
                     let state = app.state::<Mutex<AppState>>();
                     let mut s = lock_mutex(&state);
                     // Diagnostics: record the live frontmost app for the self-check.
                     s.last_frontmost = Some(bundle_id.clone());
-                    let allowed = s.is_app_allowed(&bundle_id);
                     (
-                        allowed,
+                        s.is_app_allowed(&bundle_id),
                         s.is_restricted,
                         s.free_activity_end_at.is_some(),
                         s.focus_started_at.is_some(),
-                        // Had a temporary pass that has now expired.
-                        s.temp_allowed.contains_key(&bundle_id) && !allowed,
+                        s.locale.clone(),
                     )
                 };
 
+                // is_app_allowed already returns true while paused, so a paused
+                // session never blocks.
                 let should_block =
                     has_focus_session && is_restricted && !is_free_activity && !allowed;
 
                 if should_block {
-                    // Collect the distracting app (Cmd+H equivalent) and show the prompt.
+                    // Gently collect the distracting app (Cmd+H equivalent).
                     let _ = unsafe { front_app.hide() };
 
-                    {
-                        let state = app.state::<Mutex<AppState>>();
-                        let mut s = lock_mutex(&state);
-                        s.prompt_active = true;
-                        // Drop the expired pass so the tray countdown stops.
-                        s.temp_allowed.remove(&bundle_id);
+                    // Notify, throttled per app so repeats don't pile up.
+                    let now = Instant::now();
+                    let same_app = last_notified_bundle.as_deref() == Some(bundle_id.as_str());
+                    let recently = last_notified_at
+                        .map(|t| now.duration_since(t).as_secs() < NOTIFY_THROTTLE_SECS)
+                        .unwrap_or(false);
+                    if !(same_app && recently) {
+                        commands::notify_distraction(&app, &current_app_name, &locale);
+                        last_notified_bundle = Some(bundle_id.clone());
+                        last_notified_at = Some(now);
                     }
-
-                    if had_temp {
-                        commands::play_sound("Submarine");
-                    }
-
-                    let name = current_app_name.clone();
-                    let bid = bundle_id.clone();
-                    let app_for_prompt = app.clone();
-                    let _ = app.run_on_main_thread(move || {
-                        let _ = app_for_prompt.emit(
-                            "blocked-app",
-                            serde_json::json!({ "name": name, "bundle_id": bid }),
-                        );
-                        commands::show_prompt_window(&app_for_prompt);
-                    });
                 }
             }
         }

@@ -46,7 +46,7 @@ const appState = ref<AppState>({
     free_activity_end_at: null,
     locale: "system",
     focus_goal_minutes: 0,
-    temp_allowed: {},
+    paused: false,
 });
 
 const elapsedSeconds = ref(0);
@@ -103,6 +103,18 @@ function rotateQuote() {
     currentQuoteIndex.value = (currentQuoteIndex.value + 1) % currentQuotes.value.length;
 }
 
+// Keep this (secondary-display) window's language in sync with the app setting,
+// resolving "system" the same way the main window does.
+function applyLocale(loc: string) {
+    locale.value = (
+        loc === "system"
+            ? navigator.language.toLowerCase().startsWith("en")
+            : loc.toLowerCase().startsWith("en")
+    )
+        ? "en-US"
+        : "zh-CN";
+}
+
 // --- Lifecycle ---
 onMounted(async () => {
     // Random starting quote
@@ -111,6 +123,7 @@ onMounted(async () => {
     // Load initial state
     try {
         appState.value = await invoke<AppState>("get_state");
+        applyLocale(appState.value.locale);
     } catch (e) {
         console.error("Overlay: failed to load state", e);
     }
@@ -118,6 +131,7 @@ onMounted(async () => {
     // Listen for state changes
     unlistenState = await listen<AppState>("state-changed", (event) => {
         appState.value = event.payload;
+        applyLocale(event.payload.locale);
     });
 
     // Focus timer

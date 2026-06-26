@@ -59,8 +59,12 @@
     "breakReminderEvery": "提醒间隔",
     "keepFocus": "保持专注",
     "continueFocus": "继续专注",
+    "pauseFocus": "暂停专注",
+    "resumeFocus": "继续专注",
+    "pausedTitle": "已暂停",
+    "pausedHint": "专注已暂停,你可以自由使用任意应用。可在下方调整本次专注允许的应用,然后点击「继续专注」。",
     "focusTaskFallback": "正在完成一项重要的任务...",
-    "focusHint": "试图打开其他应用时，窗口会再次出现提醒你。",
+    "focusHint": "打开非清单应用时，会自动收起它并发送系统通知。",
     "endFocus": "结束专注",
     "confirmEndTitle": "结束专注",
     "confirmEndDescription": "确定要结束本次专注吗？",
@@ -78,7 +82,7 @@
     "primaryDisplay": "主屏",
     "checkVersion": "版本",
     "testSound": "测试提示音",
-    "previewPrompt": "预览拦截弹窗"
+    "testNotification": "测试通知"
   },
   "overlay": {
     "breakTitle": "休息一下",

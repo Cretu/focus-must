@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -74,16 +73,14 @@ pub struct AppState {
     /// (0 = no reminder). Set when a focus session starts.
     #[serde(default)]
     pub focus_goal_minutes: u64,
-    /// Per-app temporary passes: bundle id -> unix expiry. While unexpired, the
-    /// app is allowed even during a restricted focus session ("use once" grace).
+    /// Whether the focus session is paused. While paused, nothing is blocked
+    /// and the user can adjust the whitelist before resuming.
     #[serde(default)]
-    pub temp_allowed: HashMap<String, u64>,
-    /// Whether the distraction prompt window is currently shown. Shared so the
-    /// monitor thread and the frontend commands can coordinate (the prompt
-    /// stays up until the user chooses, instead of auto-dismissing). Not
-    /// persisted or sent to the frontend.
+    pub paused: bool,
+    /// When the session was paused (unix secs), used to exclude paused time
+    /// from the elapsed focus duration on resume. Not persisted.
     #[serde(skip)]
-    pub prompt_active: bool,
+    pub paused_at: Option<u64>,
     /// Diagnostics: last non-self frontmost app seen by the monitor (proves
     /// foreground monitoring is alive). Not persisted or sent to the frontend.
     #[serde(skip)]
@@ -105,8 +102,8 @@ impl Default for AppState {
             free_activity_end_at: None,
             locale: "system".to_string(),
             focus_goal_minutes: 0,
-            temp_allowed: HashMap::new(),
-            prompt_active: false,
+            paused: false,
+            paused_at: None,
             last_frontmost: None,
             monitors_info: Vec::new(),
         }
@@ -115,16 +112,14 @@ impl Default for AppState {
 
 impl AppState {
     pub fn is_app_allowed(&self, bundle_id: &str) -> bool {
+        if self.paused {
+            return true;
+        }
         if self.free_activity_end_at.is_some() {
             return true;
         }
         if !self.is_restricted {
             return true;
-        }
-        if let Some(&until) = self.temp_allowed.get(bundle_id) {
-            if until > unix_now_secs() {
-                return true;
-            }
         }
         self.default_whitelist.iter().any(|id| id == bundle_id)
             || self.session_whitelist.iter().any(|id| id == bundle_id)

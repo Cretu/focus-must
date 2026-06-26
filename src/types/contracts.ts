@@ -22,11 +22,6 @@ export interface SelfCheckReport {
     version: string;
 }
 
-export interface BlockedAppEvent {
-    name: string;
-    bundle_id: string;
-}
-
 export interface AppState {
     is_restricted: boolean;
     default_whitelist: string[];
@@ -37,7 +32,7 @@ export interface AppState {
     free_activity_end_at: number | null;
     locale: PreferredLocale;
     focus_goal_minutes: number;
-    temp_allowed: Record<string, number>;
+    paused: boolean;
 }
 
 export interface SessionRecord {

@@ -90,7 +90,7 @@ export const useAppStore = defineStore("app", () => {
         free_activity_end_at: null,
         locale: "system",
         focus_goal_minutes: 0,
-        temp_allowed: {},
+        paused: false,
     });
 
     const isTaskInputShaking = ref(false);
@@ -101,6 +101,8 @@ export const useAppStore = defineStore("app", () => {
     const elapsedSeconds = ref(0);
     const showEndConfirm = ref(false);
     const allowedAppNames = ref<AppInfo[]>([]);
+    // Whitelist being edited while the session is paused.
+    const pausedSelectedApps = ref<Set<string>>(new Set());
 
     // --- Break reminder ---
     // The interval is a persisted setting (appState.focus_goal_minutes,
@@ -148,6 +150,8 @@ export const useAppStore = defineStore("app", () => {
     // ---------------------------------------------------------------------------
 
     const isFocusing = computed(() => appState.value.focus_started_at !== null);
+
+    const isPaused = computed(() => appState.value.paused === true);
 
     const isOnBreak = computed(
         () =>
@@ -452,10 +456,33 @@ export const useAppStore = defineStore("app", () => {
         });
     }
 
-    function previewPrompt() {
-        invoke("preview_prompt").catch((error) => {
-            console.error("Failed to preview prompt:", error);
+    function testNotification() {
+        invoke("test_notification").catch((error) => {
+            console.error("Failed to send test notification:", error);
         });
+    }
+
+    // --- Pause / Resume ---
+    async function pauseFocus() {
+        try {
+            await invoke("pause_focus");
+        } catch (error) {
+            console.error("Failed to pause focus:", error);
+        }
+    }
+
+    function togglePausedApp(bundleId: string) {
+        pausedSelectedApps.value = toggleSetItem(pausedSelectedApps.value, bundleId);
+    }
+
+    async function resumeFocus() {
+        try {
+            await invoke("resume_focus", {
+                whitelist: Array.from(pausedSelectedApps.value),
+            });
+        } catch (error) {
+            console.error("Failed to resume focus:", error);
+        }
     }
 
     async function confirmEndFocus() {
@@ -546,6 +573,15 @@ export const useAppStore = defineStore("app", () => {
     watch(taskDescription, (value) => {
         if (value.trim()) {
             isTaskInputInvalid.value = false;
+        }
+    });
+
+    // When the session pauses, seed the whitelist editor from the session
+    // whitelist and refresh the running-apps list.
+    watch(isPaused, (paused) => {
+        if (paused) {
+            pausedSelectedApps.value = new Set(appState.value.session_whitelist);
+            void loadApps(false);
         }
     });
 
@@ -645,6 +681,7 @@ export const useAppStore = defineStore("app", () => {
         elapsedSeconds,
         showEndConfirm,
         allowedAppNames,
+        pausedSelectedApps,
         settingsApps,
         settingsWhitelist,
         settingsLocale,
@@ -667,6 +704,7 @@ export const useAppStore = defineStore("app", () => {
         selectedLocale,
         effectiveLocale,
         isFocusing,
+        isPaused,
         isOnBreak,
         recentTaskSuggestions,
         formattedTime,
@@ -683,13 +721,16 @@ export const useAppStore = defineStore("app", () => {
         openAnalytics,
         startFocus,
         confirmEndFocus,
+        pauseFocus,
+        resumeFocus,
+        togglePausedApp,
         startFreeActivity,
         dismissBreakReminder,
         startBreakFromReminder,
         setBreakReminder,
         runSelfCheck,
         testSound,
-        previewPrompt,
+        testNotification,
         loadMoreHistory,
 
         // Lifecycle

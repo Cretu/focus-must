@@ -23,76 +23,31 @@ pub fn show_main_window(app: &tauri::AppHandle, always_on_top: bool) {
     show_all_overlays(app, always_on_top);
 }
 
-/// Hide the main window, the distraction prompt, and all overlay windows.
-/// Also clears the shared `prompt_active` flag.
+/// Hide the main window and all overlay windows.
 pub fn hide_all_windows(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.hide();
     }
-    if let Some(win) = app.get_webview_window("prompt") {
-        let _ = win.hide();
-    }
     hide_all_overlays(app);
-
-    if let Some(state) = app.try_state::<Mutex<AppState>>() {
-        lock_mutex(&state).prompt_active = false;
-    }
 }
 
-/// Show the distraction prompt centered on the monitor under the cursor
-/// (falling back to the primary monitor). Small modal window — not a cover.
-/// Call on the main thread.
-pub fn show_prompt_window(app: &tauri::AppHandle) {
-    let Some(prompt) = app.get_webview_window("prompt") else {
-        return;
+/// Send a native notification that a distracting app was minimized. The app is
+/// already collected, so this is the only cue (no intrusive window).
+pub fn notify_distraction(app: &tauri::AppHandle, app_name: &str, locale: &str) {
+    use tauri_plugin_notification::NotificationExt;
+
+    let body = if crate::state::locale_is_en(locale) {
+        format!("Minimized {app_name} — stay focused")
+    } else {
+        format!("已收起 {app_name}，继续专注")
     };
 
-    // Pick the monitor whose physical rect contains the cursor. cursor_position
-    // and monitor positions are both global physical pixels, so this is
-    // coordinate-consistent (unlike monitor_from_point's unit assumptions).
-    let cursor = prompt.cursor_position().ok();
-    let target = cursor
-        .and_then(|c| {
-            prompt
-                .available_monitors()
-                .unwrap_or_default()
-                .into_iter()
-                .find(|m| {
-                    let p = m.position();
-                    let s = m.size();
-                    c.x >= p.x as f64
-                        && c.x < p.x as f64 + s.width as f64
-                        && c.y >= p.y as f64
-                        && c.y < p.y as f64 + s.height as f64
-                })
-        })
-        .or_else(|| prompt.primary_monitor().ok().flatten());
-
-    if let Some(mon) = target {
-        let mpos = mon.position();
-        let msize = mon.size();
-        if let Ok(wsize) = prompt.outer_size() {
-            let x = mpos.x + (msize.width as i32 - wsize.width as i32) / 2;
-            let y = mpos.y + (msize.height as i32 - wsize.height as i32) / 2;
-            let _ = prompt.set_position(tauri::PhysicalPosition::new(x, y));
-        }
-    }
-
-    let _ = prompt.set_always_on_top(true);
-    let _ = prompt.show();
-    let _ = prompt.set_focus();
-
-    // The app runs as an Accessory (no Dock icon), so set_focus alone doesn't
-    // reliably make it the active app — activate explicitly so the prompt
-    // becomes the key window and receives ESC / button clicks.
-    #[cfg(target_os = "macos")]
-    unsafe {
-        use objc2::{class, msg_send, runtime::AnyObject};
-        let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
-        if !ns_app.is_null() {
-            let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
-        }
-    }
+    let _ = app
+        .notification()
+        .builder()
+        .title("Focus Must")
+        .body(body)
+        .show();
 }
 
 /// Play a built-in macOS system sound by name (e.g. "Submarine", "Glass").
@@ -171,21 +126,11 @@ pub fn test_sound() {
     play_sound("Glass");
 }
 
-/// Show the distraction prompt with sample content so the user can verify it
-/// appears on the right display and that the buttons / ESC work.
+/// Send a sample notification so the user can confirm notifications are allowed.
 #[tauri::command]
-pub fn preview_prompt(app: tauri::AppHandle) {
-    let _ = app.emit(
-        "blocked-app",
-        serde_json::json!({
-            "name": "Self-check Preview",
-            "bundle_id": "com.focus-must.selftest",
-        }),
-    );
-    let app_for_show = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        show_prompt_window(&app_for_show);
-    });
+pub fn test_notification(app: tauri::AppHandle, state: tauri::State<'_, Mutex<AppState>>) {
+    let locale = lock_mutex(&state).locale.clone();
+    notify_distraction(&app, "Self-check", &locale);
 }
 
 /// Show all overlay windows on secondary monitors.
@@ -296,48 +241,6 @@ pub fn sync_overlays(app: &tauri::AppHandle) {
     }
 }
 
-/// Create the small distraction-prompt window (hidden until needed). macOS only.
-#[cfg(target_os = "macos")]
-pub fn create_prompt_window(app: &tauri::AppHandle) {
-    use tauri::{WebviewUrl, WebviewWindowBuilder};
-
-    if app.get_webview_window("prompt").is_some() {
-        return;
-    }
-
-    let url = WebviewUrl::App("index.html".into());
-    let win = match WebviewWindowBuilder::new(app, "prompt", url)
-        .title("")
-        .inner_size(460.0, 400.0)
-        .decorations(false)
-        .transparent(true)
-        .always_on_top(true)
-        .resizable(false)
-        .closable(false)
-        .skip_taskbar(true)
-        .visible(false)
-        .build()
-    {
-        Ok(win) => win,
-        Err(error) => {
-            eprintln!("Failed to create prompt window: {error}");
-            return;
-        }
-    };
-
-    // Visible across all Spaces, like the other windows.
-    {
-        use objc2::msg_send;
-        if let Ok(ns_window) = win.ns_window() {
-            let ns_win: *mut objc2::runtime::AnyObject = ns_window.cast();
-            unsafe {
-                let behavior: isize = (1 << 0) | (1 << 4);
-                let _: () = msg_send![&*ns_win, setCollectionBehavior: behavior];
-            }
-        }
-    }
-}
-
 /// Shared lock-session logic used by both the command and the tray handler.
 pub fn do_lock_session(app: &tauri::AppHandle) {
     {
@@ -365,6 +268,8 @@ pub fn do_lock_session(app: &tauri::AppHandle) {
         s.task_description = None;
         s.is_restricted = true;
         s.focus_started_at = None;
+        s.paused = false;
+        s.paused_at = None;
         let _ = app.emit("state-changed", s.clone());
     }
     {
@@ -438,8 +343,8 @@ pub fn unlock_session(
         s.task_description = Some(task);
         s.focus_started_at = Some(unix_now_secs());
         s.free_activity_end_at = None;
-        // Start each focus session with a clean slate of temporary passes.
-        s.temp_allowed.clear();
+        s.paused = false;
+        s.paused_at = None;
         let _ = app.emit("state-changed", s.clone());
     }
 
@@ -447,6 +352,61 @@ pub fn unlock_session(
         ts.set_focus_active();
     }
 
+    hide_all_windows(&app);
+}
+
+/// Pause the focus session: stop blocking and surface the planner so the user
+/// can adjust the whitelist before resuming. The elapsed timer is frozen.
+#[tauri::command]
+pub fn pause_focus(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Mutex<AppState>>,
+    tray_state: tauri::State<'_, Mutex<TrayMenuState>>,
+) {
+    {
+        let mut s = lock_mutex(&state);
+        if s.focus_started_at.is_none() || s.paused {
+            return;
+        }
+        s.paused = true;
+        s.paused_at = Some(unix_now_secs());
+        let _ = app.emit("state-changed", s.clone());
+    }
+    if let Ok(ts) = tray_state.lock() {
+        ts.set_paused();
+    }
+    show_main_window(&app, false);
+}
+
+/// Resume a paused focus session with the (possibly edited) whitelist, excluding
+/// the paused time from the elapsed duration.
+#[tauri::command]
+pub fn resume_focus(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Mutex<AppState>>,
+    tray_state: tauri::State<'_, Mutex<TrayMenuState>>,
+    whitelist: Option<Vec<String>>,
+) {
+    {
+        let mut s = lock_mutex(&state);
+        if !s.paused {
+            return;
+        }
+        if let Some(wl) = whitelist {
+            s.session_whitelist = wl;
+        }
+        // Shift the start forward by the paused duration so elapsed excludes it.
+        if let (Some(start), Some(paused_at)) = (s.focus_started_at, s.paused_at) {
+            let paused_for = unix_now_secs().saturating_sub(paused_at);
+            s.focus_started_at = Some(start + paused_for);
+        }
+        s.paused = false;
+        s.paused_at = None;
+        let _ = app.emit("state-changed", s.clone());
+    }
+    if let Ok(ts) = tray_state.lock() {
+        ts.set_focus_active();
+    }
     hide_all_windows(&app);
 }
 
@@ -547,37 +507,6 @@ pub fn switch_to_app(bundle_id: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("Failed to switch to app {bundle_id}: {error}"))
-}
-
-/// Dismiss the distraction prompt and keep focusing (the app stays collected).
-#[tauri::command]
-pub fn dismiss_distraction(app: tauri::AppHandle) {
-    hide_all_windows(&app);
-}
-
-/// Grant a distracting app a temporary pass: allow it for `duration_minutes`,
-/// bring it back to the foreground, and dismiss the distraction prompt. Once the
-/// grace period expires the app is collected again on the next check.
-#[tauri::command]
-pub fn allow_app_temporarily(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, Mutex<AppState>>,
-    bundle_id: String,
-    duration_minutes: u64,
-) {
-    {
-        let mut s = lock_mutex(&state);
-        let until = unix_now_secs() + duration_minutes.max(1) * 60;
-        s.temp_allowed.insert(bundle_id.clone(), until);
-        let _ = app.emit("state-changed", s.clone());
-    }
-
-    // Bring the app back so the user can use it during the grace period.
-    let _ = std::process::Command::new("open")
-        .args(["-b", &bundle_id])
-        .spawn();
-
-    hide_all_windows(&app);
 }
 
 #[tauri::command]

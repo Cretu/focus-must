@@ -5,8 +5,7 @@
   ],
   "windows": [
     "main",
-    "overlay-*",
-    "prompt"
+    "overlay-*"
   ],
   "permissions": [
     "core:default",
@@ -17,6 +16,7 @@
     "core:window:allow-set-fullscreen",
     "autostart:default",
     "store:default",
-    "opener:default"
+    "opener:default",
+    "notification:default"
   ]
 }
