@@ -10,6 +10,8 @@
 一个面向 macOS 的专注管理桌面应用：
 先写下任务，再开始专注；支持白名单应用、休息计时、历史记录与托盘控制。
 
+**产品主页**：<https://cretu.github.io/focus-must/>（源码在 [`site/`](./site)，push 到 main 后由 GitHub Actions 自动部署）
+
 ## 项目定位
 
 - 平台：macOS（使用 macOS 原生 API 监控前台应用）
