@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed, defineAsyncComponent } from "vue";
+import { onMounted, onUnmounted, computed, defineAsyncComponent, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { en, zh_cn } from "@nuxt/ui/locale";
 import { useAppStore } from "./stores/appStore";
 import { useSnowEffect } from "./composables/useSnowEffect";
+import { hideSplash } from "./splash";
 import { localeOptionsWithText } from "./i18n";
 
 const OverlayView = defineAsyncComponent(
@@ -41,8 +42,22 @@ const nuxtUiLocale = computed(() =>
 // editing screen, so it keeps the glass background.
 const isPeeking = computed(() => store.isFocusing && !store.isPaused);
 
+// The HTML splash (index.html) covers the window from first paint. Fade it
+// out once the store has finished booting — or immediately on overlay
+// windows, where splash.js should already have suppressed it.
+watch(
+    () => store.isBooting,
+    (booting) => {
+        if (!booting && !isOverlay) {
+            hideSplash();
+        }
+    },
+);
+
 onMounted(() => {
-    if (!isOverlay) {
+    if (isOverlay) {
+        hideSplash();
+    } else {
         store.initialize();
     }
 });
@@ -67,16 +82,8 @@ onUnmounted(() => {
                 v-show="snowEnabled"
             ></canvas>
 
-            <UCard v-if="store.isBooting" class="w-[min(420px,86vw)]">
-                <div class="space-y-3 text-center">
-                    <div class="startup-spinner" aria-hidden="true"></div>
-                    <h1 class="brand-title text-xl font-semibold">Focus Must</h1>
-                    <UProgress :model-value="null" size="sm" />
-                    <p class="text-sm text-muted">
-                        {{ $t("app.startupLoadingApps") }}
-                    </p>
-                </div>
-            </UCard>
+            <!-- While booting, the HTML splash covers this window. -->
+            <template v-if="store.isBooting" />
 
             <PausedView v-else-if="store.isPaused" />
 
@@ -121,25 +128,25 @@ onUnmounted(() => {
     background:
         radial-gradient(
             circle at 16% 12%,
-            rgba(16, 185, 129, 0.1),
+            rgba(217, 119, 87, 0.1),
             transparent 44%
         ),
         radial-gradient(
             circle at 84% 88%,
-            rgba(99, 102, 241, 0.1),
+            rgba(217, 119, 87, 0.07),
             transparent 46%
         ),
         radial-gradient(
             circle at 50% -10%,
-            rgba(255, 255, 255, 0.06),
+            rgba(250, 249, 245, 0.06),
             transparent 55%
         ),
         linear-gradient(
             135deg,
-            rgba(255, 255, 255, 0.05),
-            rgba(255, 255, 255, 0.01)
+            rgba(250, 249, 245, 0.05),
+            rgba(250, 249, 245, 0.01)
         ),
-        rgba(15, 23, 42, 0.16);
+        rgba(30, 29, 27, 0.2);
     backdrop-filter: blur(24px) saturate(135%);
     -webkit-backdrop-filter: blur(24px) saturate(135%);
 }
@@ -166,7 +173,7 @@ onUnmounted(() => {
     background: radial-gradient(
         ellipse at center,
         transparent 55%,
-        rgba(2, 6, 23, 0.22) 100%
+        rgba(20, 19, 17, 0.24) 100%
     );
 }
 
@@ -174,12 +181,12 @@ onUnmounted(() => {
     background:
         radial-gradient(
             circle at 16% 12%,
-            rgba(16, 185, 129, 0.06),
+            rgba(217, 119, 87, 0.07),
             transparent 44%
         ),
         radial-gradient(
             circle at 84% 88%,
-            rgba(99, 102, 241, 0.05),
+            rgba(217, 119, 87, 0.05),
             transparent 46%
         ),
         radial-gradient(
@@ -192,39 +199,14 @@ onUnmounted(() => {
             rgba(255, 255, 255, 0.08),
             rgba(255, 255, 255, 0.015)
         ),
-        rgba(236, 245, 255, 0.16);
+        rgba(245, 243, 236, 0.2);
 }
 
 :global(html.light) .overlay-container::after {
     background: radial-gradient(
         ellipse at center,
         transparent 60%,
-        rgba(100, 116, 139, 0.12) 100%
+        rgba(120, 113, 108, 0.12) 100%
     );
-}
-
-.brand-title {
-    background: linear-gradient(135deg, #34d399, #818cf8);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    letter-spacing: 0.3px;
-}
-
-.startup-spinner {
-    width: 52px;
-    height: 52px;
-    margin: 0 auto;
-    border-radius: 50%;
-    border: 3px solid rgba(148, 163, 184, 0.22);
-    border-top-color: #10b981;
-    border-right-color: rgba(129, 140, 248, 0.75);
-    animation: spin 0.9s linear infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
 }
 </style>

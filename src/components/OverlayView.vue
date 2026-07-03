@@ -199,21 +199,21 @@ onUnmounted(() => {
     gap: 48px;
     padding: 48px;
     background:
-        radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.06), transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.05), transparent 50%),
-        rgba(10, 14, 24, 0.88);
+        radial-gradient(circle at 20% 20%, rgba(217, 119, 87, 0.07), transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(217, 119, 87, 0.05), transparent 50%),
+        rgba(30, 29, 27, 0.9);
     backdrop-filter: blur(32px) saturate(120%);
     -webkit-backdrop-filter: blur(32px) saturate(120%);
-    color: rgba(255, 255, 255, 0.92);
+    color: rgba(250, 249, 245, 0.92);
     user-select: none;
 }
 
 :global(html.light) .overlay-screen {
     background:
-        radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.04), transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.03), transparent 50%),
-        rgba(236, 245, 255, 0.92);
-    color: rgba(15, 23, 42, 0.88);
+        radial-gradient(circle at 20% 20%, rgba(217, 119, 87, 0.05), transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(217, 119, 87, 0.04), transparent 50%),
+        rgba(250, 249, 245, 0.93);
+    color: rgba(38, 38, 36, 0.9);
 }
 
 .overlay-content {
@@ -226,7 +226,7 @@ onUnmounted(() => {
 
 .overlay-icon {
     font-size: 72px;
-    color: rgba(99, 102, 241, 0.85);
+    color: rgba(217, 119, 87, 0.88);
     animation: pulse-glow 3s ease-in-out infinite;
 }
 
@@ -235,13 +235,14 @@ onUnmounted(() => {
 }
 
 .icon-planning {
-    color: rgba(16, 185, 129, 0.85);
+    color: rgba(226, 154, 116, 0.9);
 }
 
 .overlay-title {
+    font-family: var(--font-serif);
     font-size: 32px;
-    font-weight: 700;
-    letter-spacing: 1px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
     opacity: 0.95;
 }
 
@@ -251,7 +252,7 @@ onUnmounted(() => {
     font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;
     letter-spacing: 4px;
-    background: linear-gradient(135deg, #818cf8, #6366f1);
+    background: linear-gradient(135deg, #e29a74, #c65d3f);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -295,9 +296,10 @@ onUnmounted(() => {
 }
 
 .quote-text {
+    font-family: var(--font-serif);
     font-size: 18px;
     font-style: italic;
-    opacity: 0.5;
+    opacity: 0.55;
     line-height: 1.7;
 }
 

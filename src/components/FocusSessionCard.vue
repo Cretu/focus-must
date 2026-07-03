@@ -33,7 +33,7 @@ function confirmEndFocus() {
     <UCard class="w-[min(760px,90vw)] text-center">
         <div class="space-y-5">
             <UIcon name="i-lucide-brain" class="focus-brain mx-auto block text-6xl text-primary" />
-            <h1 class="text-2xl font-semibold">{{ t("app.keepFocus") }}</h1>
+            <h1 class="font-serif text-2xl font-semibold tracking-tight">{{ t("app.keepFocus") }}</h1>
 
             <div class="timer-display">{{ store.formattedTime }}</div>
 
@@ -47,7 +47,7 @@ function confirmEndFocus() {
                 <UBadge
                     v-for="app in store.allowedAppNames"
                     :key="app.bundle_id"
-                    color="success"
+                    color="primary"
                     variant="soft"
                     :label="app.name"
                 />
@@ -138,7 +138,7 @@ function confirmEndFocus() {
     font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;
     letter-spacing: 2px;
-    background: linear-gradient(135deg, #34d399, #818cf8);
+    background: linear-gradient(135deg, #e29a74, #c65d3f);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -146,7 +146,7 @@ function confirmEndFocus() {
 }
 
 .focus-brain {
-    filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.35));
+    filter: drop-shadow(0 0 14px rgba(217, 119, 87, 0.35));
     animation: brain-breathe 3.6s ease-in-out infinite;
 }
 

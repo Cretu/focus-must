@@ -1,13 +1,190 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Focus Must</title>
+    <style>
+      /* -----------------------------------------------------------------
+       * Startup splash — pure HTML/CSS so it paints the instant the
+       * webview loads, long before the app bundle finishes parsing.
+       * public/splash.js hides it on overlay windows and exposes the
+       * fade-out API the app calls once booting completes.
+       * ----------------------------------------------------------------- */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background:
+          radial-gradient(circle at 18% 14%, rgba(217, 119, 87, 0.08), transparent 46%),
+          radial-gradient(circle at 82% 86%, rgba(217, 119, 87, 0.06), transparent 48%),
+          rgba(250, 249, 245, 0.92);
+        -webkit-backdrop-filter: blur(28px) saturate(120%);
+        backdrop-filter: blur(28px) saturate(120%);
+        opacity: 1;
+        transition: opacity 0.45s ease;
+      }
+
+      html[data-splash-off] #splash {
+        display: none;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        #splash {
+          background:
+            radial-gradient(circle at 18% 14%, rgba(217, 119, 87, 0.1), transparent 46%),
+            radial-gradient(circle at 82% 86%, rgba(217, 119, 87, 0.07), transparent 48%),
+            rgba(38, 38, 36, 0.93);
+        }
+      }
+
+      .splash-inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        animation: splash-enter 0.6s ease both;
+      }
+
+      .splash-mark {
+        width: 76px;
+        height: 76px;
+        color: #d97757;
+        animation: splash-spin 14s linear infinite;
+      }
+
+      .splash-mark-pulse {
+        animation: splash-breathe 2.6s ease-in-out infinite;
+      }
+
+      .splash-name {
+        margin: 4px 0 0;
+        font-family:
+          ui-serif, "New York", "Iowan Old Style", Georgia, "Songti SC",
+          "Noto Serif SC", serif;
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        color: #262624;
+      }
+
+      .splash-tagline {
+        margin: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+          "Hiragino Sans GB", sans-serif;
+        font-size: 13px;
+        color: rgba(38, 38, 36, 0.55);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .splash-name {
+          color: #faf9f5;
+        }
+        .splash-tagline {
+          color: rgba(250, 249, 245, 0.55);
+        }
+      }
+
+      .splash-dots {
+        display: flex;
+        gap: 7px;
+        margin-top: 10px;
+      }
+
+      .splash-dots i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #d97757;
+        animation: splash-dot 1.3s ease-in-out infinite;
+      }
+
+      .splash-dots i:nth-child(2) {
+        animation-delay: 0.18s;
+      }
+
+      .splash-dots i:nth-child(3) {
+        animation-delay: 0.36s;
+      }
+
+      @keyframes splash-enter {
+        from {
+          opacity: 0;
+          transform: translateY(10px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @keyframes splash-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes splash-breathe {
+        0%,
+        100% {
+          opacity: 0.85;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.07);
+        }
+      }
+
+      @keyframes splash-dot {
+        0%,
+        100% {
+          opacity: 0.25;
+          transform: scale(0.85);
+        }
+        40% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .splash-mark,
+        .splash-mark-pulse,
+        .splash-dots i {
+          animation: none;
+        }
+      }
+    </style>
+    <script src="/splash.js"></script>
   </head>
 
   <body>
+    <div id="splash" aria-hidden="true">
+      <div class="splash-inner">
+        <svg class="splash-mark" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g class="splash-mark-pulse" fill="currentColor" style="transform-origin: 24px 24px">
+            <rect x="21.5" y="3" width="5" height="15" rx="2.5" />
+            <rect x="21.5" y="3" width="5" height="15" rx="2.5" transform="rotate(90 24 24)" />
+            <rect x="21.5" y="3" width="5" height="15" rx="2.5" transform="rotate(180 24 24)" />
+            <rect x="21.5" y="3" width="5" height="15" rx="2.5" transform="rotate(270 24 24)" />
+            <rect x="21.5" y="6.5" width="5" height="11.5" rx="2.5" transform="rotate(45 24 24)" />
+            <rect x="21.5" y="6.5" width="5" height="11.5" rx="2.5" transform="rotate(135 24 24)" />
+            <rect x="21.5" y="6.5" width="5" height="11.5" rx="2.5" transform="rotate(225 24 24)" />
+            <rect x="21.5" y="6.5" width="5" height="11.5" rx="2.5" transform="rotate(315 24 24)" />
+          </g>
+        </svg>
+        <h1 class="splash-name">Focus Must</h1>
+        <p class="splash-tagline" id="splash-tagline">先想清楚要做什么，再开始</p>
+        <div class="splash-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+      </div>
+    </div>
+
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
