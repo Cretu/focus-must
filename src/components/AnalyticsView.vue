@@ -209,7 +209,7 @@ function formatHourLabel(hour: number): string {
             <div class="space-y-1">
                 <div class="flex min-w-0 items-center gap-2">
                     <UIcon name="i-lucide-chart-column" class="text-3xl text-primary" />
-                    <h1 class="text-xl font-semibold leading-tight">{{ t("app.analyticsTitle") }}</h1>
+                    <h1 class="font-serif text-xl font-semibold leading-tight tracking-tight">{{ t("app.analyticsTitle") }}</h1>
                 </div>
                 <p class="text-sm text-muted">{{ t("app.analyticsSubtitle") }}</p>
             </div>
@@ -286,8 +286,8 @@ function formatHourLabel(hour: number): string {
                             >
                                 <defs>
                                     <linearGradient id="dailyTrendArea" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stop-color="rgb(16 185 129 / 0.35)" />
-                                        <stop offset="100%" stop-color="rgb(16 185 129 / 0.04)" />
+                                        <stop offset="0%" stop-color="#d97757" stop-opacity="0.35" />
+                                        <stop offset="100%" stop-color="#d97757" stop-opacity="0.04" />
                                     </linearGradient>
                                 </defs>
                                 <line
@@ -303,7 +303,7 @@ function formatHourLabel(hour: number): string {
                                 <path
                                     :d="dailyTrendSmoothPath"
                                     fill="none"
-                                    stroke="rgb(16 185 129)"
+                                    stroke="#d97757"
                                     stroke-width="0.35"
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
@@ -438,7 +438,7 @@ function formatHourLabel(hour: number): string {
 .analytics-metric-icon {
     font-size: 40px;
     line-height: 1;
-    color: rgb(16 185 129);
+    color: var(--ui-primary);
 }
 
 .hour-range-chip {
@@ -447,12 +447,12 @@ function formatHourLabel(hour: number): string {
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    background: color-mix(in oklab, rgb(16 185 129) 14%, transparent);
+    background: color-mix(in oklab, var(--ui-primary) 14%, transparent);
     padding: 2px 6px;
     font-size: 11px;
     font-weight: 600;
     line-height: 1.2;
-    color: color-mix(in oklab, rgb(16 185 129) 72%, currentColor);
+    color: color-mix(in oklab, var(--ui-primary) 72%, currentColor);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
@@ -463,8 +463,8 @@ function formatHourLabel(hour: number): string {
     width: 100%;
     border-radius: 12px;
     padding: 10px;
-    border: 1px solid rgba(148, 163, 184, 0.2);
-    background: rgba(148, 163, 184, 0.06);
+    border: 1px solid rgba(168, 162, 158, 0.22);
+    background: rgba(168, 162, 158, 0.07);
 }
 
 .daily-trend-chart {
@@ -474,12 +474,12 @@ function formatHourLabel(hour: number): string {
 }
 
 .daily-trend-grid-line {
-    stroke: rgba(148, 163, 184, 0.2);
+    stroke: rgba(168, 162, 158, 0.22);
     stroke-width: 0.35;
 }
 
 .daily-trend-focus-line {
-    stroke: rgba(16, 185, 129, 0.7);
+    stroke: rgba(217, 119, 87, 0.75);
     stroke-width: 0.45;
     stroke-dasharray: 1.4 1.4;
 }
@@ -489,10 +489,10 @@ function formatHourLabel(hour: number): string {
     width: 8px;
     height: 8px;
     border-radius: 999px;
-    background: rgb(16 185 129);
+    background: var(--ui-primary);
     border: 2px solid rgb(255 255 255 / 0.92);
     transform: translate(-50%, -50%);
-    box-shadow: 0 0 0 1px rgb(16 185 129 / 0.2);
+    box-shadow: 0 0 0 1px rgba(217, 119, 87, 0.25);
     pointer-events: none;
 }
 
@@ -501,8 +501,8 @@ function formatHourLabel(hour: number): string {
     top: 8px;
     transform: translateX(-50%);
     border-radius: 10px;
-    border: 1px solid rgba(148, 163, 184, 0.28);
-    background: rgba(15, 23, 42, 0.86);
+    border: 1px solid rgba(168, 162, 158, 0.3);
+    background: rgba(38, 38, 36, 0.9);
     padding: 6px 8px;
     pointer-events: none;
     min-width: 82px;
@@ -510,7 +510,7 @@ function formatHourLabel(hour: number): string {
 
 .daily-trend-tooltip-date {
     font-size: 10px;
-    color: rgba(226, 232, 240, 0.82);
+    color: rgba(245, 243, 236, 0.78);
     line-height: 1.1;
 }
 
@@ -518,7 +518,7 @@ function formatHourLabel(hour: number): string {
     margin-top: 2px;
     font-size: 11px;
     font-weight: 600;
-    color: rgba(240, 253, 244, 0.96);
+    color: rgba(250, 249, 245, 0.96);
     line-height: 1.1;
 }
 </style>

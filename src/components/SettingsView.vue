@@ -30,7 +30,7 @@ onMounted(() => {
             <div class="space-y-1">
                 <div class="flex min-w-0 items-center gap-2">
                     <UIcon name="i-lucide-settings" class="text-3xl text-primary" />
-                    <h1 class="text-xl font-semibold leading-tight">{{ t("app.settingsTitle") }}</h1>
+                    <h1 class="font-serif text-xl font-semibold leading-tight tracking-tight">{{ t("app.settingsTitle") }}</h1>
                 </div>
             </div>
         </template>
@@ -46,7 +46,14 @@ onMounted(() => {
                                 <span class="text-xs font-normal">({{ t("app.defaultAllowedAppsSubtitle") }})</span>
                             </div>
                         </div>
-                        <UButton color="neutral" variant="outline" size="xs" @click="store.refreshSettingsApps()">
+                        <UButton
+                            color="neutral"
+                            variant="outline"
+                            size="xs"
+                            leading-icon="i-lucide-rotate-ccw"
+                            :loading="store.settingsAppsLoading"
+                            @click="store.refreshSettingsApps()"
+                        >
                             {{ t("app.refresh") }}
                         </UButton>
                     </div>
@@ -55,6 +62,7 @@ onMounted(() => {
                 <AppGrid
                     :apps="store.settingsApps"
                     :selected-apps="store.settingsWhitelist"
+                    :loading="store.settingsAppsLoading"
                     @toggle-app="(id: string) => store.toggleSettingsApp(id)"
                 />
             </UCard>
@@ -244,7 +252,7 @@ onMounted(() => {
                     {{ t("app.back") }}
                 </UButton>
                 <UButton
-                    color="success"
+                    color="primary"
                     variant="solid"
                     class="flex-1 justify-center text-center"
                     @click="store.saveSettings()"

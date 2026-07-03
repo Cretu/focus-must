@@ -1,10 +1,14 @@
 {
   "name": "focus-must",
   "private": true,
-  "version": "2.12.0",
+  "version": "3.0.0",
+  "description": "A macOS focus companion: plan your task first, whitelist the apps you need, and let Focus Must keep distractions away.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "icons:bundle": "node scripts/bundle-icons.mjs",
+    "prebuild": "node scripts/bundle-icons.mjs",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
@@ -24,6 +28,7 @@
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.115",
     "@tauri-apps/cli": "^2",
     "@vitejs/plugin-vue": "^5.2.1",
     "typescript": "~5.6.2",

@@ -67,9 +67,9 @@ export function useSnowEffect(options?: SnowEffectOptions) {
 
             ctx.clearRect(0, 0, canvas.width, canvas.height)
             // Snowflakes are white on dark themes; on light themes they'd be
-            // invisible, so fall back to a soft slate-blue tone.
+            // invisible, so fall back to a soft warm-gray tone.
             const light = isLightTheme()
-            const flakeColor = light ? '148, 163, 184' : '255, 255, 255'
+            const flakeColor = light ? '168, 162, 158' : '255, 255, 255'
             for (const f of flakes) {
                 ctx.beginPath()
                 ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2)

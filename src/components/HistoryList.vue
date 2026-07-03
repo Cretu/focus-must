@@ -61,15 +61,29 @@ const filteredSessions = computed(() => {
   return props.sessions.filter((session) => session.session_type === activeTab.value)
 })
 
+// "Today" / "Yesterday" read faster than raw dates for the most common groups.
+function dayLabel(d: Date): string {
+  const startOfDay = (x: Date) =>
+    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const diffDays = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86_400_000)
+  if (diffDays === 0) return t('history.today')
+  if (diffDays === 1) return t('history.yesterday')
+  return d.toLocaleDateString()
+}
+
 const groupedSessions = computed(() => {
-  const groups: Record<string, SessionRecord[]> = {}
+  const groups = new Map<string, { label: string; items: SessionRecord[] }>()
   for (const session of filteredSessions.value) {
     const d = new Date(session.started_at * 1000)
-    const key = d.toLocaleDateString()
-    if (!groups[key]) groups[key] = []
-    groups[key].push(session)
+    const key = d.toDateString()
+    let group = groups.get(key)
+    if (!group) {
+      group = { label: dayLabel(d), items: [] }
+      groups.set(key, group)
+    }
+    group.items.push(session)
   }
-  return Object.entries(groups).map(([date, items]) => ({ date, items }))
+  return Array.from(groups, ([date, group]) => ({ date, ...group }))
 })
 
 function maybeLoadMore() {
@@ -121,7 +135,7 @@ onMounted(() => {
 
     <div v-else ref="historyListRef" class="history-list space-y-3" @scroll="maybeLoadMore">
       <div v-for="group in groupedSessions" :key="group.date" class="space-y-2">
-        <div class="history-day-divider">{{ group.date }}</div>
+        <div class="history-day-divider">{{ group.label }}</div>
         <div class="space-y-2">
           <div v-for="(session, index) in group.items" :key="index" class="history-row">
             <div class="space-y-1">
@@ -189,19 +203,19 @@ onMounted(() => {
 }
 
 .history-list:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.56) transparent;
+  scrollbar-color: rgba(168, 162, 158, 0.56) transparent;
 }
 
 .history-list:hover::-webkit-scrollbar-track {
-  background: rgba(148, 163, 184, 0.08);
+  background: rgba(168, 162, 158, 0.08);
 }
 
 .history-list:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.56);
+  background: rgba(168, 162, 158, 0.56);
 }
 
 .history-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.72);
+  background: rgba(168, 162, 158, 0.72);
 }
 
 .empty-state {
@@ -226,12 +240,12 @@ onMounted(() => {
   content: '';
   flex: 1;
   height: 1.5px;
-  background: rgba(148, 163, 184, 0.45);
+  background: rgba(168, 162, 158, 0.45);
 }
 
 .history-row {
   padding: 8px 2px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.26);
+  border-bottom: 1px solid rgba(168, 162, 158, 0.26);
 }
 
 .history-row:last-child {

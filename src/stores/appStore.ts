@@ -96,6 +96,7 @@ export const useAppStore = defineStore("app", () => {
     const isTaskInputShaking = ref(false);
     const isTaskInputInvalid = ref(false);
     const isBooting = ref(true);
+    const appsLoading = ref(false);
 
     // --- Focus Session ---
     const elapsedSeconds = ref(0);
@@ -112,6 +113,7 @@ export const useAppStore = defineStore("app", () => {
 
     // --- Settings ---
     const settingsApps = ref<AppInfo[]>([]);
+    const settingsAppsLoading = ref(false);
     const settingsWhitelist = ref<Set<string>>(new Set());
     const settingsLocale = ref<PreferredLocale>("system");
     const autostartEnabled = ref(false);
@@ -251,6 +253,7 @@ export const useAppStore = defineStore("app", () => {
     }
 
     async function loadApps(includeIcons = false) {
+        appsLoading.value = true;
         try {
             runningApps.value = await invoke<AppInfo[]>("get_running_apps", {
                 includeIcons,
@@ -261,6 +264,8 @@ export const useAppStore = defineStore("app", () => {
         } catch (error) {
             console.error("Failed to load running apps:", error);
             runningApps.value = [];
+        } finally {
+            appsLoading.value = false;
         }
     }
 
@@ -280,9 +285,14 @@ export const useAppStore = defineStore("app", () => {
     // Crucially, this does NOT reset `settingsWhitelist`, so it can be called
     // from the "Refresh" button without discarding the user's unsaved toggles.
     async function loadSettingsAppsList() {
-        settingsApps.value = await invoke<AppInfo[]>("get_running_apps", {
-            includeIcons: false,
-        });
+        settingsAppsLoading.value = true;
+        try {
+            settingsApps.value = await invoke<AppInfo[]>("get_running_apps", {
+                includeIcons: false,
+            });
+        } finally {
+            settingsAppsLoading.value = false;
+        }
         void hydrateIcons("settings");
 
         if (settingsWhitelist.value.size === 0) {
@@ -618,7 +628,9 @@ export const useAppStore = defineStore("app", () => {
 
     async function initialize() {
         const startupStartedAt = Date.now();
-        const minimumStartupAnimationMs = 220;
+        // Keep the splash visible long enough to register as a deliberate
+        // opening beat instead of a flash, even on fast machines.
+        const minimumStartupAnimationMs = 700;
 
         try {
             await loadState();
@@ -678,11 +690,13 @@ export const useAppStore = defineStore("app", () => {
         isTaskInputShaking,
         isTaskInputInvalid,
         isBooting,
+        appsLoading,
         elapsedSeconds,
         showEndConfirm,
         allowedAppNames,
         pausedSelectedApps,
         settingsApps,
+        settingsAppsLoading,
         settingsWhitelist,
         settingsLocale,
         autostartEnabled,
