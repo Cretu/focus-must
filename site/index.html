@@ -139,59 +139,45 @@ img, svg { display: block; }
 .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
 .hero .fine { font-size: 13px; color: var(--text-3); padding: 0 12px; }
 
-/* ============ App mockup ============ */
-.mock-stage { padding: 56px 0 30px; position: relative; }
+/* ============ Screenshot frames ============ */
+.mock-stage { padding: 54px 0 20px; position: relative; }
 .mock-stage::after {
-  content: ""; position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%);
-  width: min(860px, 86%); height: 120px; border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(217, 119, 87, 0.18), transparent);
-  filter: blur(30px); pointer-events: none;
+  content: ""; position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+  width: min(900px, 88%); height: 130px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(217, 119, 87, 0.2), transparent);
+  filter: blur(34px); pointer-events: none;
 }
-.window {
+.shot-frame {
   position: relative; z-index: 1;
-  max-width: 920px; margin: 0 auto;
-  background: var(--surface); border: 1px solid var(--border-2);
-  border-radius: 16px; box-shadow: var(--shadow); overflow: hidden;
-  text-align: left;
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+  aspect-ratio: 1360 / 900;
 }
-.titlebar { display: flex; align-items: center; gap: 8px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
-.dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-.dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
-.win-title {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  flex: 1; min-width: 0; transform: translateX(-14px);
-  font-family: var(--serif); font-size: 13.5px; font-weight: 600; color: var(--text-2);
+.shot-frame .shot {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  opacity: 0; transition: opacity 0.4s ease;
 }
-.win-title svg { width: 15px; height: 15px; color: var(--clay); flex-shrink: 0; }
-.win-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.win-body { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; padding: 18px; background: var(--bg); }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; min-width: 0; }
-.panel + .panel { margin-top: 12px; }
-.panel-label { font-size: 12px; font-weight: 600; color: var(--text-3); margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-line { height: 10px; border-radius: 6px; background: var(--surface-2); margin: 8px 0; }
-.task-line.w60 { width: 60%; }
-.task-text { font-size: 14px; color: var(--text); }
-.chips { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-.chip { font-size: 11px; color: var(--text-2); border: 1px solid var(--border-2); border-radius: 7px; padding: 2px 9px; white-space: nowrap; }
-.appgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.app { aspect-ratio: 1; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-width: 0; }
-.app i { font-style: normal; width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; }
-.app b { font-size: 9px; font-weight: 500; color: var(--text-2); max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app.sel { border-color: rgba(217, 119, 87, 0.8); background: rgba(217, 119, 87, 0.12); box-shadow: 0 0 0 1px rgba(217, 119, 87, 0.35); }
-.cta-bar {
-  margin-top: 12px; background: var(--clay); color: #fff; border-radius: 10px;
-  text-align: center; font-size: 14px; font-weight: 600; padding: 11px;
-  box-shadow: 0 10px 22px -10px rgba(217, 119, 87, 0.7);
+.shot-frame .shot.loaded { opacity: 1; }
+.hero-shot { max-width: 940px; margin: 0 auto; }
+
+/* ============ Preview (tabbed gallery) ============ */
+#preview { padding-top: 46px; }
+.preview { max-width: 960px; margin: 0 auto; text-align: center; }
+.preview-tabs {
+  display: inline-flex; gap: 4px; padding: 4px; margin: 0 auto 22px;
+  border: 1px solid var(--border-2); border-radius: 999px; background: var(--surface);
 }
-.hist-day { font-size: 10.5px; font-weight: 600; color: var(--text-3); display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; }
-.hist-day::before, .hist-day::after { content: ""; flex: 1; height: 1px; background: var(--border-2); }
-.hist-item { padding: 7px 2px; border-bottom: 1px solid var(--border); }
-.hist-item:last-child { border-bottom: none; }
-.hist-top { display: flex; justify-content: space-between; gap: 6px; font-size: 10.5px; color: var(--text-3); }
-.hist-top .dur { color: var(--text-2); font-weight: 600; white-space: nowrap; }
-.hist-task { font-size: 12.5px; color: var(--text); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tag { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--clay); margin-right: 5px; }
-.tag.break { background: #d3a54a; }
+.preview-tab {
+  border: 0; background: transparent; cursor: pointer;
+  font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text-2);
+  padding: 8px 22px; border-radius: 999px; transition: all 0.16s ease; white-space: nowrap;
+}
+.preview-tab:hover { color: var(--text); }
+.preview-tab.is-active { background: var(--clay); color: #fff; }
+.preview-stage { margin: 0 auto; }
+.preview-caption { text-align: center; color: var(--text-2); font-size: 14.5px; margin-top: 18px; padding: 0 12px; }
 
 /* ============ Sections ============ */
 section { padding: 84px 0; }
@@ -283,9 +269,6 @@ html.anim .reveal.in { opacity: 1; transform: none; }
 @media (max-width: 900px) {
   .feat-grid, .steps { grid-template-columns: 1fr 1fr; }
   .design-cols { grid-template-columns: 1fr; gap: 36px; }
-  .win-body { grid-template-columns: 1fr; }
-  .win-right { display: none; }
-  .appgrid { grid-template-columns: repeat(4, 1fr); }
 }
 @media (max-width: 620px) {
   .wrap { padding: 0 18px; }
@@ -306,12 +289,10 @@ html.anim .reveal.in { opacity: 1; transform: none; }
   .cta-row { flex-direction: column; align-items: stretch; gap: 10px; padding: 0 6px; }
   .cta-row .btn { justify-content: center; }
 
-  .mock-stage { padding: 34px 0 18px; }
-  .window { border-radius: 14px; }
-  .titlebar { padding: 11px 12px; }
-  .win-title { transform: none; font-size: 12.5px; }
-  .win-body { padding: 12px; gap: 12px; }
-  .appgrid { grid-template-columns: repeat(3, 1fr); }
+  .mock-stage { padding: 30px 0 10px; }
+  .shot-frame { border-radius: 13px; }
+  #preview { padding-top: 34px; }
+  .preview-tab { padding: 8px 16px; font-size: 13px; }
 
   section { padding: 58px 0; }
   .sec-sub { margin-bottom: 34px; }
@@ -333,10 +314,6 @@ html.anim .reveal.in { opacity: 1; transform: none; }
   .foot-links { gap: 14px; }
 }
 @media (max-width: 400px) {
-  /* Ultra-small screens: the nav download button collapses to an icon
-     (the hero CTA right below carries the full label). */
-  .nav-dl span { display: none; }
-  .nav-dl { padding: 7px 9px; }
   .nav-actions { gap: 5px; }
   .brand { font-size: 16px; }
 }
@@ -381,10 +358,6 @@ html.anim .reveal.in { opacity: 1; transform: none; }
       <a class="icon-btn" href="https://github.com/Cretu/focus-must" target="_blank" rel="noopener" aria-label="GitHub">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.15c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.75 2.69 1.25 3.35.95.1-.74.4-1.25.72-1.53-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.59.24 2.76.12 3.05.74.8 1.18 1.83 1.18 3.09 0 4.42-2.69 5.39-5.26 5.68.41.35.78 1.05.78 2.12v3.14c0 .3.2.66.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
       </a>
-      <a class="btn btn-primary nav-dl" href="https://github.com/Cretu/focus-must/releases/latest">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M6 11l6 6 6-6M4 21h16"/></svg>
-        <span data-i18n="nav.download">下载</span>
-      </a>
     </div>
   </div>
 </nav>
@@ -408,65 +381,31 @@ html.anim .reveal.in { opacity: 1; transform: none; }
   </div>
 
   <div class="wrap mock-stage">
-    <div class="window reveal in">
-      <div class="titlebar">
-        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-        <span class="win-title">
-          <svg viewBox="0 0 48 48" fill="currentColor"><use href="#mark"/></svg>
-          <span class="win-title-text" data-i18n="mock.title">Focus Must：先想清楚要做什么，再开始</span>
-        </span>
-      </div>
-      <div class="win-body">
-        <div class="win-left">
-          <div class="panel">
-            <div class="panel-label">📋 <span data-i18n="mock.taskLabel">接下来做什么</span></div>
-            <div class="task-text" data-i18n="mock.taskText">完成 v3.0 发布说明，整理更新日志</div>
-            <div class="task-line w60"></div>
-            <div class="chips">
-              <span class="chip" data-i18n="mock.chip1">写周报</span>
-              <span class="chip" data-i18n="mock.chip2">重构启动流程</span>
-              <span class="chip" data-i18n="mock.chip3">整理需求文档</span>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-label">🗂 <span data-i18n="mock.appsLabel">需要用到的 APP　·　已选 2 个</span></div>
-            <div class="appgrid">
-              <div class="app sel"><i style="background:linear-gradient(160deg,#7ed0ff,#1b88f4)">🧭</i><b>Safari</b></div>
-              <div class="app sel"><i style="background:linear-gradient(160deg,#3aa4e8,#0066b8)">⌨️</i><b>VS Code</b></div>
-              <div class="app"><i style="background:linear-gradient(160deg,#ffe9a8,#f7c845)">📝</i><b data-i18n="mock.appNotes">备忘录</b></div>
-              <div class="app"><i style="background:linear-gradient(160deg,#ff7a8c,#fa2d48)">🎵</i><b data-i18n="mock.appMusic">音乐</b></div>
-              <div class="app"><i style="background:linear-gradient(160deg,#5edc5a,#09bb07)">💬</i><b data-i18n="mock.appWeChat">微信</b></div>
-              <div class="app"><i style="background:linear-gradient(160deg,#666,#333)">❯_</i><b data-i18n="mock.appTerminal">终端</b></div>
-            </div>
-            <div class="cta-bar">🚀 <span data-i18n="mock.cta">开始专注</span></div>
-          </div>
-        </div>
-        <div class="win-right">
-          <div class="panel" style="height:100%">
-            <div class="panel-label">🕘 <span data-i18n="mock.histLabel">最近记录</span></div>
-            <div class="hist-day" data-i18n="mock.today">今天</div>
-            <div class="hist-item">
-              <div class="hist-top"><span><span class="tag"></span>09:30 - 11:00</span><span class="dur" data-i18n="mock.dur1">1时30分</span></div>
-              <div class="hist-task" data-i18n="mock.task1">完成 v3.0 发布说明</div>
-            </div>
-            <div class="hist-item">
-              <div class="hist-top"><span><span class="tag break"></span>11:00 - 11:15</span><span class="dur" data-i18n="mock.dur2">15分</span></div>
-            </div>
-            <div class="hist-day" data-i18n="mock.yesterday">昨天</div>
-            <div class="hist-item">
-              <div class="hist-top"><span><span class="tag"></span>14:20 - 16:05</span><span class="dur" data-i18n="mock.dur3">1时45分</span></div>
-              <div class="hist-task" data-i18n="mock.task2">重构启动流程</div>
-            </div>
-            <div class="hist-item">
-              <div class="hist-top"><span><span class="tag"></span>20:00 - 21:10</span><span class="dur" data-i18n="mock.dur4">1时10分</span></div>
-              <div class="hist-task" data-i18n="mock.task3">整理需求文档</div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="shot-frame hero-shot reveal in">
+      <img class="shot" data-view="planning" alt="Focus Must — Focus session planning view" width="1360" height="900" />
     </div>
   </div>
 </header>
+
+<section id="preview">
+  <div class="wrap">
+    <div class="eyebrow reveal">Preview</div>
+    <h2 class="sec-title reveal" data-i18n="preview.title">看看它长什么样</h2>
+    <p class="sec-sub reveal" data-i18n="preview.sub">真实界面截图，随你的语言与深浅色自动切换。</p>
+
+    <div class="preview reveal">
+      <div class="preview-tabs" role="tablist">
+        <button class="preview-tab is-active" data-view="planning" role="tab" data-i18n="preview.tab.plan">计划</button>
+        <button class="preview-tab" data-view="analytics" role="tab" data-i18n="preview.tab.analytics">统计</button>
+        <button class="preview-tab" data-view="overlay" role="tab" data-i18n="preview.tab.focus">专注</button>
+      </div>
+      <div class="shot-frame preview-stage">
+        <img class="shot" id="preview-img" data-view="planning" alt="Focus Must screenshot" width="1360" height="900" />
+      </div>
+      <p class="preview-caption" id="preview-caption" data-i18n="preview.cap.planning">写下任务、勾选要用的应用，⌘ + ↵ 一键开始专注。</p>
+    </div>
+  </div>
+</section>
 
 <section id="features">
   <div class="wrap">
@@ -615,28 +554,15 @@ html.anim .reveal.in { opacity: 1; transform: none; }
       "hero.dlBtn": "下载 macOS 版",
       "hero.srcBtn": "查看源码",
       "hero.fine": "免费 · 开源 (MIT) · 数据完全存储在本地",
-      "mock.title": "Focus Must：先想清楚要做什么，再开始",
-      "mock.taskLabel": "接下来做什么",
-      "mock.taskText": "完成 v3.0 发布说明，整理更新日志",
-      "mock.chip1": "写周报",
-      "mock.chip2": "重构启动流程",
-      "mock.chip3": "整理需求文档",
-      "mock.appsLabel": "需要用到的 APP　·　已选 2 个",
-      "mock.appNotes": "备忘录",
-      "mock.appMusic": "音乐",
-      "mock.appWeChat": "微信",
-      "mock.appTerminal": "终端",
-      "mock.cta": "开始专注",
-      "mock.histLabel": "最近记录",
-      "mock.today": "今天",
-      "mock.yesterday": "昨天",
-      "mock.dur1": "1时30分",
-      "mock.dur2": "15分",
-      "mock.dur3": "1时45分",
-      "mock.dur4": "1时10分",
-      "mock.task1": "完成 v3.0 发布说明",
-      "mock.task2": "重构启动流程",
-      "mock.task3": "整理需求文档",
+      "hero.shotAlt": "Focus Must 专注计划界面",
+      "preview.title": "看看它长什么样",
+      "preview.sub": "真实界面截图，随你的语言与深浅色自动切换。",
+      "preview.tab.plan": "计划",
+      "preview.tab.analytics": "统计",
+      "preview.tab.focus": "专注",
+      "preview.cap.planning": "写下任务、勾选要用的应用，⌘ + ↵ 一键开始专注。",
+      "preview.cap.analytics": "近 30 天专注趋势、时段分布与累计时长一目了然。",
+      "preview.cap.overlay": "副屏遮罩用大字计时与轮播语录守住你的注意力。",
       "feat.title": "为「深度工作」而设计",
       "feat.sub": "不是又一个番茄钟。Focus Must 从源头管理注意力：没写清楚要做什么之前，不开始；不在清单里的应用，打不开。",
       "feat.1.t": "先计划，后专注",
@@ -691,28 +617,15 @@ html.anim .reveal.in { opacity: 1; transform: none; }
       "hero.dlBtn": "Download for macOS",
       "hero.srcBtn": "View source",
       "hero.fine": "Free · Open source (MIT) · All data stays on your device",
-      "mock.title": "Focus Must: Plan your next task before you start",
-      "mock.taskLabel": "What are you doing next",
-      "mock.taskText": "Finish the v3.0 release notes and changelog",
-      "mock.chip1": "Weekly report",
-      "mock.chip2": "Refactor startup flow",
-      "mock.chip3": "Organize the spec",
-      "mock.appsLabel": "Apps needed · 2 selected",
-      "mock.appNotes": "Notes",
-      "mock.appMusic": "Music",
-      "mock.appWeChat": "WeChat",
-      "mock.appTerminal": "Terminal",
-      "mock.cta": "Start Focus",
-      "mock.histLabel": "Recent Records",
-      "mock.today": "Today",
-      "mock.yesterday": "Yesterday",
-      "mock.dur1": "1h 30m",
-      "mock.dur2": "15m",
-      "mock.dur3": "1h 45m",
-      "mock.dur4": "1h 10m",
-      "mock.task1": "Finish the v3.0 release notes",
-      "mock.task2": "Refactor startup flow",
-      "mock.task3": "Organize the spec",
+      "hero.shotAlt": "Focus Must focus-planning interface",
+      "preview.title": "See it in action",
+      "preview.sub": "Real interface screenshots — they follow your language and light / dark theme.",
+      "preview.tab.plan": "Plan",
+      "preview.tab.analytics": "Analytics",
+      "preview.tab.focus": "Focus",
+      "preview.cap.planning": "Write the task, pick the apps you need, and start with ⌘ + ↵.",
+      "preview.cap.analytics": "Your 30-day focus trend, time-of-day distribution and totals at a glance.",
+      "preview.cap.overlay": "A full-screen mask guards your attention with a big timer and rotating quotes.",
       "feat.title": "Built for deep work",
       "feat.sub": "Not another pomodoro timer. Focus Must manages attention at the source: nothing starts before the task is written down, and apps outside your list simply won't open.",
       "feat.1.t": "Plan first, then focus",
@@ -792,10 +705,66 @@ html.anim .reveal.in { opacity: 1; transform: none; }
     var themeToggle = document.getElementById("theme-toggle");
     themeToggle.setAttribute("aria-label", dict["a11y.theme"]);
     themeToggle.setAttribute("title", dict["a11y.theme"]);
+
+    var heroShot = document.querySelector(".hero-shot .shot");
+    if (heroShot && dict["hero.shotAlt"]) heroShot.setAttribute("alt", dict["hero.shotAlt"]);
+
+    updateShots();
+    updatePreviewCaption();
+  }
+
+  // ------------------------------------------------------------------
+  // Screenshots — language + theme aware, driving the hero image and the
+  // tabbed preview gallery. Sources: assets/screens/{view}-{lang}-{theme}.jpg
+  // ------------------------------------------------------------------
+  var previewImg = document.getElementById("preview-img");
+  var previewCaption = document.getElementById("preview-caption");
+  var currentView = "planning";
+
+  function resolvedTheme() {
+    var t = root.getAttribute("data-theme");
+    if (t === "light" || t === "dark") return t;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function updateShots() {
+    var theme = resolvedTheme();
+    var shots = document.querySelectorAll(".shot");
+    for (var i = 0; i < shots.length; i++) {
+      var view = shots[i].getAttribute("data-view");
+      var src = "assets/screens/" + view + "-" + currentLang + "-" + theme + ".jpg";
+      if (shots[i].getAttribute("src") !== src) {
+        shots[i].classList.remove("loaded");
+        shots[i].setAttribute("src", src);
+      }
+    }
+  }
+  function updatePreviewCaption() {
+    if (!previewCaption) return;
+    var dict = I18N[currentLang] || I18N.zh;
+    var key = "preview.cap." + currentView;
+    if (dict[key]) previewCaption.textContent = dict[key];
   }
 
   var currentLang = detectLang();
   applyLang(currentLang);
+
+  // Fade each screenshot in once it decodes.
+  document.querySelectorAll(".shot").forEach(function (img) {
+    if (img.complete && img.naturalWidth > 0) img.classList.add("loaded");
+    img.addEventListener("load", function () { img.classList.add("loaded"); });
+  });
+
+  // Preview tab switching.
+  var tabs = document.querySelectorAll(".preview-tab");
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      currentView = tab.getAttribute("data-view");
+      tabs.forEach(function (t) { t.classList.toggle("is-active", t === tab); });
+      if (previewImg) previewImg.setAttribute("data-view", currentView);
+      updateShots();
+      updatePreviewCaption();
+    });
+  });
 
   langToggle.addEventListener("click", function () {
     currentLang = currentLang === "en" ? "zh" : "en";
@@ -816,6 +785,12 @@ html.anim .reveal.in { opacity: 1; transform: none; }
     var next = current === "dark" ? "light" : "dark";
     root.setAttribute("data-theme", next);
     try { localStorage.setItem("fm-theme", next); } catch (e) {}
+    updateShots();
+  });
+
+  // Follow the system theme when the user hasn't picked one manually.
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
+    if (!root.getAttribute("data-theme")) updateShots();
   });
 
   // ------------------------------------------------------------------
