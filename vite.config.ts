@@ -43,6 +43,23 @@ export default defineConfig(async () => ({
     },
   },
 
+  // Pre-bundle the deps hit during boot so the dev server never pauses
+  // mid-startup to optimize a newly discovered dependency (which triggers a
+  // full page reload while the splash is up). @nuxt/ui manages its own
+  // optimizeDeps entries via its Vite plugin.
+  optimizeDeps: {
+    include: [
+      "vue",
+      "pinia",
+      "vue-i18n",
+      "@iconify/vue",
+      "@tauri-apps/api/core",
+      "@tauri-apps/api/event",
+      "@tauri-apps/api/window",
+      "@tauri-apps/plugin-autostart",
+    ],
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
@@ -59,9 +76,22 @@ export default defineConfig(async () => ({
           port: 1421,
         }
       : undefined,
+    // Transform the boot-critical module graph while `tauri dev` is still
+    // compiling Rust, so the first window paint isn't stuck waiting on
+    // on-demand transforms.
+    warmup: {
+      clientFiles: ["./src/main.ts", "./src/components/PlanningView.vue"],
+    },
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // Also ignore the d.ts files that unplugin-auto-import/-components
+      // rewrite on dev-server boot — watching them triggers a full page
+      // reload (splash flicker) right as the app starts.
+      ignored: [
+        "**/src-tauri/**",
+        "**/auto-imports.d.ts",
+        "**/components.d.ts",
+      ],
     },
   },
 }));

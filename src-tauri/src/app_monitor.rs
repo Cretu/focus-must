@@ -335,7 +335,7 @@ fn start_monitoring_macos(app: tauri::AppHandle) {
 
                 if should_block {
                     // Gently collect the distracting app (Cmd+H equivalent).
-                    let _ = unsafe { front_app.hide() };
+                    let _ = front_app.hide();
 
                     // Notify, throttled per app so repeats don't pile up.
                     let now = Instant::now();

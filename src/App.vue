@@ -26,8 +26,16 @@ const AnalyticsView = defineAsyncComponent(
     () => import("./components/AnalyticsView.vue"),
 );
 
-// Detect this window's role from its label.
-const windowLabel = getCurrentWindow().label;
+// Detect this window's role from its label. Outside Tauri (plain-browser
+// debugging via `npm run dev`) getCurrentWindow() throws — fall back to
+// "main" so the app still mounts instead of hanging behind the splash.
+const windowLabel = (() => {
+    try {
+        return getCurrentWindow().label;
+    } catch {
+        return "main";
+    }
+})();
 const isOverlay = windowLabel.startsWith("overlay-");
 
 const store = useAppStore();
