@@ -8,6 +8,11 @@
 <meta property="og:title" content="Focus Must — 先想清楚要做什么，再开始专注" />
 <meta property="og:description" content="macOS 专注管理应用：白名单拦截分心、多显示器遮罩、休息提醒与统计分析。免费开源。" />
 <meta property="og:type" content="website" />
+<meta property="og:url" content="https://cretu.github.io/focus-must/" />
+<meta property="og:image" content="https://cretu.github.io/focus-must/assets/screens/planning-zh-light.jpg" />
+<meta property="og:image:width" content="2720" />
+<meta property="og:image:height" content="1800" />
+<meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cg fill='%23d97757'%3E%3Crect x='21.5' y='3' width='5' height='15' rx='2.5'/%3E%3Crect x='21.5' y='3' width='5' height='15' rx='2.5' transform='rotate(90 24 24)'/%3E%3Crect x='21.5' y='3' width='5' height='15' rx='2.5' transform='rotate(180 24 24)'/%3E%3Crect x='21.5' y='3' width='5' height='15' rx='2.5' transform='rotate(270 24 24)'/%3E%3Crect x='21.5' y='6.5' width='5' height='11.5' rx='2.5' transform='rotate(45 24 24)'/%3E%3Crect x='21.5' y='6.5' width='5' height='11.5' rx='2.5' transform='rotate(135 24 24)'/%3E%3Crect x='21.5' y='6.5' width='5' height='11.5' rx='2.5' transform='rotate(225 24 24)'/%3E%3Crect x='21.5' y='6.5' width='5' height='11.5' rx='2.5' transform='rotate(315 24 24)'/%3E%3C/g%3E%3C/svg%3E" />
 <style>
 /* ============ Design tokens (shared with the app) ============ */
@@ -157,9 +162,17 @@ img, svg { display: block; }
 }
 .shot-frame .shot {
   width: 100%; height: 100%; object-fit: cover; display: block;
-  opacity: 0; transition: opacity 0.4s ease;
+  transition: opacity 0.4s ease;
 }
-.shot-frame .shot.loaded { opacity: 1; }
+/* Hidden only while JS swaps in a different variant, so screenshots stay
+   visible without JavaScript. */
+.shot-frame .shot.loading { opacity: 0; }
+/* Browsers without aspect-ratio (Safari <= 14): reserve the frame height
+   with a padding box instead of collapsing to ~0 until the image loads. */
+@supports not (aspect-ratio: 1 / 1) {
+  .shot-frame::before { content: ""; display: block; padding-top: 66.18%; }
+  .shot-frame .shot { position: absolute; top: 0; left: 0; }
+}
 .hero-shot { max-width: 940px; margin: 0 auto; }
 
 /* ============ Preview (tabbed gallery) ============ */
@@ -176,7 +189,6 @@ img, svg { display: block; }
 }
 .preview-tab:hover { color: var(--text); }
 .preview-tab.is-active { background: var(--clay); color: #fff; }
-.preview-stage { margin: 0 auto; }
 .preview-caption { text-align: center; color: var(--text-2); font-size: 14.5px; margin-top: 18px; padding: 0 12px; }
 
 /* ============ Sections ============ */
@@ -382,7 +394,11 @@ html.anim .reveal.in { opacity: 1; transform: none; }
 
   <div class="wrap mock-stage">
     <div class="shot-frame hero-shot reveal in">
-      <img class="shot" data-view="planning" alt="Focus Must — Focus session planning view" width="1360" height="900" />
+      <img class="shot" data-view="planning" data-i18n-alt="hero.shotAlt"
+        src="assets/screens/planning-zh-light.jpg"
+        srcset="assets/screens/planning-zh-light-1360.jpg 1360w, assets/screens/planning-zh-light.jpg 2720w"
+        sizes="(max-width: 988px) 100vw, 940px"
+        fetchpriority="high" alt="Focus Must 专注计划界面" width="1360" height="900" />
     </div>
   </div>
 </header>
@@ -394,15 +410,19 @@ html.anim .reveal.in { opacity: 1; transform: none; }
     <p class="sec-sub reveal" data-i18n="preview.sub">真实界面截图，随你的语言与深浅色自动切换。</p>
 
     <div class="preview reveal">
-      <div class="preview-tabs" role="tablist">
-        <button class="preview-tab is-active" data-view="planning" role="tab" data-i18n="preview.tab.plan">计划</button>
-        <button class="preview-tab" data-view="analytics" role="tab" data-i18n="preview.tab.analytics">统计</button>
-        <button class="preview-tab" data-view="overlay" role="tab" data-i18n="preview.tab.focus">专注</button>
+      <div class="preview-tabs" role="tablist" aria-label="Preview">
+        <button class="preview-tab is-active" id="preview-tab-planning" data-view="planning" role="tab" aria-selected="true" aria-controls="preview-panel" data-i18n="preview.tab.plan">计划</button>
+        <button class="preview-tab" id="preview-tab-analytics" data-view="analytics" role="tab" aria-selected="false" tabindex="-1" aria-controls="preview-panel" data-i18n="preview.tab.analytics">统计</button>
+        <button class="preview-tab" id="preview-tab-overlay" data-view="overlay" role="tab" aria-selected="false" tabindex="-1" aria-controls="preview-panel" data-i18n="preview.tab.focus">专注</button>
       </div>
-      <div class="shot-frame preview-stage">
-        <img class="shot" id="preview-img" data-view="planning" alt="Focus Must screenshot" width="1360" height="900" />
+      <div class="shot-frame" id="preview-panel" role="tabpanel" aria-labelledby="preview-tab-planning">
+        <img class="shot" id="preview-img" data-view="planning"
+          src="assets/screens/planning-zh-light.jpg"
+          srcset="assets/screens/planning-zh-light-1360.jpg 1360w, assets/screens/planning-zh-light.jpg 2720w"
+          sizes="(max-width: 1008px) 100vw, 960px"
+          loading="lazy" alt="Focus Must 专注计划界面截图" width="1360" height="900" />
       </div>
-      <p class="preview-caption" id="preview-caption" data-i18n="preview.cap.planning">写下任务、勾选要用的应用，⌘ + ↵ 一键开始专注。</p>
+      <p class="preview-caption" id="preview-caption">写下任务、勾选要用的应用，⌘ + ↵ 一键开始专注。</p>
     </div>
   </div>
 </section>
@@ -547,7 +567,6 @@ html.anim .reveal.in { opacity: 1; transform: none; }
       "nav.how": "使用方法",
       "nav.design": "设计",
       "nav.oss": "开源",
-      "nav.download": "下载",
       "hero.pill": "v3.0 全新设计 · macOS 14+",
       "hero.title": "先想清楚要做什么，<br/>再开始<em>专注</em>",
       "hero.lead": "Focus Must 帮你养成「先计划、后执行」的工作习惯：写下任务、选好要用的应用，其余的一切干扰，交给它来挡。",
@@ -555,6 +574,9 @@ html.anim .reveal.in { opacity: 1; transform: none; }
       "hero.srcBtn": "查看源码",
       "hero.fine": "免费 · 开源 (MIT) · 数据完全存储在本地",
       "hero.shotAlt": "Focus Must 专注计划界面",
+      "preview.alt.planning": "Focus Must 专注计划界面截图",
+      "preview.alt.analytics": "Focus Must 统计分析界面截图",
+      "preview.alt.overlay": "Focus Must 专注遮罩界面截图",
       "preview.title": "看看它长什么样",
       "preview.sub": "真实界面截图，随你的语言与深浅色自动切换。",
       "preview.tab.plan": "计划",
@@ -610,7 +632,6 @@ html.anim .reveal.in { opacity: 1; transform: none; }
       "nav.how": "How it works",
       "nav.design": "Design",
       "nav.oss": "Open source",
-      "nav.download": "Download",
       "hero.pill": "v3.0 refreshed design · macOS 14+",
       "hero.title": "Know what to do first.<br/>Then <em>focus</em>.",
       "hero.lead": "Focus Must builds a plan-first working habit: write down the task, pick the apps you need, and let it fend off everything else.",
@@ -618,6 +639,9 @@ html.anim .reveal.in { opacity: 1; transform: none; }
       "hero.srcBtn": "View source",
       "hero.fine": "Free · Open source (MIT) · All data stays on your device",
       "hero.shotAlt": "Focus Must focus-planning interface",
+      "preview.alt.planning": "Screenshot of the Focus Must planning screen",
+      "preview.alt.analytics": "Screenshot of the Focus Must analytics screen",
+      "preview.alt.overlay": "Screenshot of the Focus Must focus overlay",
       "preview.title": "See it in action",
       "preview.sub": "Real interface screenshots — they follow your language and light / dark theme.",
       "preview.tab.plan": "Plan",
@@ -694,6 +718,11 @@ html.anim .reveal.in { opacity: 1; transform: none; }
       var hkey = htmlNodes[j].getAttribute("data-i18n-html");
       if (dict[hkey] !== undefined) htmlNodes[j].innerHTML = dict[hkey];
     }
+    var altNodes = document.querySelectorAll("[data-i18n-alt]");
+    for (var k = 0; k < altNodes.length; k++) {
+      var akey = altNodes[k].getAttribute("data-i18n-alt");
+      if (dict[akey] !== undefined) altNodes[k].setAttribute("alt", dict[akey]);
+    }
 
     document.title = dict["meta.title"];
     var desc = document.getElementById("meta-desc");
@@ -706,9 +735,6 @@ html.anim .reveal.in { opacity: 1; transform: none; }
     themeToggle.setAttribute("aria-label", dict["a11y.theme"]);
     themeToggle.setAttribute("title", dict["a11y.theme"]);
 
-    var heroShot = document.querySelector(".hero-shot .shot");
-    if (heroShot && dict["hero.shotAlt"]) heroShot.setAttribute("alt", dict["hero.shotAlt"]);
-
     updateShots();
     updatePreviewCaption();
   }
@@ -719,52 +745,84 @@ html.anim .reveal.in { opacity: 1; transform: none; }
   // ------------------------------------------------------------------
   var previewImg = document.getElementById("preview-img");
   var previewCaption = document.getElementById("preview-caption");
-  var currentView = "planning";
+  var previewPanel = document.getElementById("preview-panel");
+  var darkMQL = window.matchMedia("(prefers-color-scheme: dark)");
 
   function resolvedTheme() {
     var t = root.getAttribute("data-theme");
     if (t === "light" || t === "dark") return t;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return darkMQL.matches ? "dark" : "light";
   }
   function updateShots() {
     var theme = resolvedTheme();
     var shots = document.querySelectorAll(".shot");
     for (var i = 0; i < shots.length; i++) {
       var view = shots[i].getAttribute("data-view");
-      var src = "assets/screens/" + view + "-" + currentLang + "-" + theme + ".jpg";
-      if (shots[i].getAttribute("src") !== src) {
-        shots[i].classList.remove("loaded");
-        shots[i].setAttribute("src", src);
+      var base = "assets/screens/" + view + "-" + currentLang + "-" + theme;
+      if (shots[i].getAttribute("src") !== base + ".jpg") {
+        shots[i].classList.add("loading");
+        shots[i].setAttribute("srcset", base + "-1360.jpg 1360w, " + base + ".jpg 2720w");
+        shots[i].setAttribute("src", base + ".jpg");
       }
     }
   }
   function updatePreviewCaption() {
-    if (!previewCaption) return;
+    if (!previewImg) return;
     var dict = I18N[currentLang] || I18N.zh;
-    var key = "preview.cap." + currentView;
-    if (dict[key]) previewCaption.textContent = dict[key];
+    var view = previewImg.getAttribute("data-view");
+    if (previewCaption && dict["preview.cap." + view]) previewCaption.textContent = dict["preview.cap." + view];
+    if (dict["preview.alt." + view]) previewImg.setAttribute("alt", dict["preview.alt." + view]);
   }
+
+  // Apply the stored manual theme before the first updateShots() so the
+  // initial screenshots match the page theme, not the system scheme.
+  var storedTheme = null;
+  try { storedTheme = localStorage.getItem("fm-theme"); } catch (e) {}
+  if (storedTheme === "light" || storedTheme === "dark") root.setAttribute("data-theme", storedTheme);
 
   var currentLang = detectLang();
   applyLang(currentLang);
 
-  // Fade each screenshot in once it decodes.
+  // Fade a screenshot back in once a swapped-in variant decodes; on error,
+  // drop the fade too so the alt text shows instead of an invisible frame.
   document.querySelectorAll(".shot").forEach(function (img) {
-    if (img.complete && img.naturalWidth > 0) img.classList.add("loaded");
-    img.addEventListener("load", function () { img.classList.add("loaded"); });
+    function reveal() { img.classList.remove("loading"); }
+    if (img.complete && img.naturalWidth > 0) reveal();
+    img.addEventListener("load", reveal);
+    img.addEventListener("error", reveal);
   });
 
-  // Preview tab switching.
+  // Preview tab switching (ARIA tabs: aria-selected + roving tabindex).
   var tabs = document.querySelectorAll(".preview-tab");
-  tabs.forEach(function (tab) {
-    tab.addEventListener("click", function () {
-      currentView = tab.getAttribute("data-view");
-      tabs.forEach(function (t) { t.classList.toggle("is-active", t === tab); });
-      if (previewImg) previewImg.setAttribute("data-view", currentView);
-      updateShots();
-      updatePreviewCaption();
+  var tabList = document.querySelector(".preview-tabs");
+  function activateTab(tab) {
+    tabs.forEach(function (t) {
+      var active = t === tab;
+      t.classList.toggle("is-active", active);
+      t.setAttribute("aria-selected", active ? "true" : "false");
+      t.tabIndex = active ? 0 : -1;
     });
+    if (previewImg) previewImg.setAttribute("data-view", tab.getAttribute("data-view"));
+    if (previewPanel) previewPanel.setAttribute("aria-labelledby", tab.id);
+    updateShots();
+    updatePreviewCaption();
+  }
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () { activateTab(tab); });
   });
+  if (tabList) {
+    tabList.addEventListener("keydown", function (e) {
+      var dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!dir) return;
+      var list = Array.prototype.slice.call(tabs);
+      var i = list.indexOf(document.activeElement);
+      if (i === -1) return;
+      e.preventDefault();
+      var next = list[(i + dir + list.length) % list.length];
+      next.focus();
+      activateTab(next);
+    });
+  }
 
   langToggle.addEventListener("click", function () {
     currentLang = currentLang === "en" ? "zh" : "en";
@@ -773,25 +831,23 @@ html.anim .reveal.in { opacity: 1; transform: none; }
   });
 
   // ------------------------------------------------------------------
-  // Theme toggle (system default, manual override persisted)
+  // Theme toggle (system default, manual override persisted; the stored
+  // preference is applied to <html> before the first updateShots() above)
   // ------------------------------------------------------------------
-  var stored = null;
-  try { stored = localStorage.getItem("fm-theme"); } catch (e) {}
-  if (stored === "light" || stored === "dark") root.setAttribute("data-theme", stored);
-
   document.getElementById("theme-toggle").addEventListener("click", function () {
-    var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    var current = root.getAttribute("data-theme") || (systemDark ? "dark" : "light");
-    var next = current === "dark" ? "light" : "dark";
+    var next = resolvedTheme() === "dark" ? "light" : "dark";
     root.setAttribute("data-theme", next);
     try { localStorage.setItem("fm-theme", next); } catch (e) {}
     updateShots();
   });
 
   // Follow the system theme when the user hasn't picked one manually.
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
+  // Safari <= 13 only supports the legacy addListener API.
+  function onSystemThemeChange() {
     if (!root.getAttribute("data-theme")) updateShots();
-  });
+  }
+  if (darkMQL.addEventListener) darkMQL.addEventListener("change", onSystemThemeChange);
+  else if (darkMQL.addListener) darkMQL.addListener(onSystemThemeChange);
 
   // ------------------------------------------------------------------
   // Scroll reveal (opt-in: without JS the content is simply visible)
