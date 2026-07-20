@@ -41,6 +41,18 @@
     --ui-bg-muted: #f5f3ec;
     --ui-bg-elevated: #f0eee6;
     --ui-bg-accented: #e8e5da;
+
+    /* Semantic accent tokens. Nuxt UI v4 does not emit these for a custom
+     * primary color ("clay") in the production build, so every
+     * color="primary" component (solid buttons, active tabs, badges) would
+     * otherwise resolve `var(--ui-primary)` to nothing and render with no
+     * background. Map them explicitly; primary follows the clay scale. */
+    --ui-primary: var(--color-clay-500);
+    --ui-secondary: #3b82f6;
+    --ui-success: #16a34a;
+    --ui-info: #0ea5e9;
+    --ui-warning: #d97706;
+    --ui-error: #dc2626;
 }
 
 .dark {
@@ -52,6 +64,14 @@
     --ui-border: #3a3937;
     --ui-border-muted: #343330;
     --ui-border-accented: #454440;
+
+    /* Slightly lighter accents so they stay legible on the dark surface. */
+    --ui-primary: var(--color-clay-400);
+    --ui-secondary: #60a5fa;
+    --ui-success: #4ade80;
+    --ui-info: #38bdf8;
+    --ui-warning: #fbbf24;
+    --ui-error: #f87171;
 }
 
 * {

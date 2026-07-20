@@ -1,7 +1,7 @@
 {
   "name": "focus-must",
   "private": true,
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "A macOS focus companion: plan your task first, whitelist the apps you need, and let Focus Must keep distractions away.",
   "license": "MIT",
   "type": "module",
