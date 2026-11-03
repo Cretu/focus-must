@@ -1,0 +1,50 @@
+name: MyGo edition
+
+on:
+  push:
+    branches: [main]
+    paths: ["mygo/**", "src/generated/lucide-icons.ts", ".github/workflows/mygo.yml"]
+  pull_request:
+    paths: ["mygo/**", "src/generated/lucide-icons.ts", ".github/workflows/mygo.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: mygo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: mygo/go.mod
+          cache-dependency-path: mygo/go.sum
+
+      - name: Formatting
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+
+      - name: Vet
+        run: |
+          go vet ./...
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet ./...
+          go tool mygo vet
+
+      - name: Generated icons are up to date
+        if: runner.os == 'Linux'
+        run: |
+          node scripts/gen-icons.mjs
+          git diff --exit-code -- internal/icons
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build the macOS app
+        if: runner.os == 'macOS'
+        run: go tool mygo build -platform darwin/arm64
