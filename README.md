@@ -51,6 +51,8 @@ v3.0 起，界面采用一套温暖的编辑感设计（Anthropic/Claude 风格�
 - 后端：Rust
 - macOS 原生能力：`objc2` / `objc2-app-kit`（运行中应用、前台应用、图标）
 
+> 🧪 **MyGo 版（并行重构）**：[`mygo/`](./mygo) 目录是用 [MyGo](https://mygo.egoist.dev/) 原生 UI 重写的同一产品——纯 Go、无 WebView、无 cgo，与本版共用 `~/.focusmust` 数据。详见 [`mygo/README.md`](./mygo/README.md)。
+
 ## 架构总览
 
 ### 前端（`src/`）

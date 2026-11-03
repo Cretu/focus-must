@@ -7,6 +7,12 @@ Scope: entire repo rooted at `focus-must/`.
 - Frontend lives in `src/`; backend lives in `src-tauri/`.
 - Package manager: npm (`package-lock.json` exists).
 - TypeScript strict mode is enabled (`tsconfig.json`).
+- `mygo/` is a parallel rewrite in Go with MyGo's native UI (its own Go
+  module; no webview, no cgo). From `mygo/`: `go test ./...`,
+  `go vet ./...`, `GOOS=darwin GOARCH=arm64 go vet ./...`, `go tool mygo vet`.
+  It shares `~/.focusmust` (settings.json, history.db) with the Tauri app:
+  keep that data format compatible in both. Its icons are generated from
+  `src/generated/lucide-icons.ts` by `node scripts/gen-icons.mjs`.
 
 ## 2) Source of Truth Files
 - JS/TS scripts: `package.json`

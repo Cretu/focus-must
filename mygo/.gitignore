@@ -1,0 +1,3 @@
+# mygo build / mygo dev outputs
+/build/
+/.mygo/
